@@ -7,9 +7,12 @@ import gradio as gr
 
 from modules.paths import script_path
 from modules.ui import create_refresh_button, gr_show
-import patches.ui as ui
 import patches.textual_inversion as textual_inversion
+import patches.ui as ui
+import patches.external_pr.ui as external_patch_ui
 from webui import wrap_gradio_gpu_call
+
+setattr(shared.opts,'pin_memory', False)
 
 
 def create_training_tab(params: script_callbacks.UiTrainTabParams = None):
@@ -149,7 +152,7 @@ def create_extension_tab(params=None):
 
 script_callbacks.on_ui_train_tabs(create_training_tab)
 script_callbacks.on_ui_train_tabs(create_extension_tab)
-
+script_callbacks.on_ui_train_tabs(external_patch_ui.on_train_gamma_tab)
 
 class Script(scripts.Script):
     def title(self):
