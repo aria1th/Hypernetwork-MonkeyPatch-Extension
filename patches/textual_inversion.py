@@ -1,12 +1,13 @@
 import csv
 import os
 
+import modules.textual_inversion.textual_inversion
 from modules import shared
 
 delayed_values = {}
 
 
-def write_loss(log_directory, filename, step, epoch_len, values, is_recursive=False):
+def write_loss(log_directory, filename, step, epoch_len, values):
     if shared.opts.training_write_csv_every == 0:
         return
 
@@ -43,3 +44,5 @@ def write_loss(log_directory, filename, step, epoch_len, values, is_recursive=Fa
             delayed_values[log_directory + filename].append((step + 1, epoch, epoch_step, values))
         else:
             delayed_values[log_directory + filename] = [(step+1, epoch, epoch_step, values)]
+
+modules.textual_inversion.textual_inversion.write_loss = write_loss
