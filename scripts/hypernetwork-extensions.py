@@ -8,6 +8,7 @@ import gradio as gr
 from modules.paths import script_path
 from modules.ui import create_refresh_button, gr_show
 import patches.ui as ui
+import patches.textual_inversion as textual_inversion
 from webui import wrap_gradio_gpu_call
 
 
