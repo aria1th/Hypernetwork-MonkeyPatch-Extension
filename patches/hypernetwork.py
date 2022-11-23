@@ -180,6 +180,13 @@ class Hypernetwork:
             for layer in layers:
                 layer.eval()
 
+
+    def train(self):
+        for k, layers in self.layers.items():
+            for layer in layers:
+                layer.train()
+
+
     def save(self, filename):
         state_dict = {}
         optimizer_saved_dict = {}
