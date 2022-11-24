@@ -29,7 +29,7 @@ You can train without cropping images.
 This extension also overrides how webui loads and finds hypernetworks, to use variable dropout rates, and etc.
 Thus, hypernetwork created with variable dropout rate might not work correctly in original webui.
 
-### Train_Gamma tab uses Gradient Accumulation from separate PR.
+### Train_Gamma tab uses Gradient Accumulation from separate PR.(as well as beta functionalities)
 ![image](https://user-images.githubusercontent.com/35677394/203696916-fedfd4b0-7621-47a3-a2e1-33662a42305d.png)
 
-This also fixes some CUDA memory issues. Currently Gamma Training is working very well, as far as I could say.
+This also fixes some CUDA memory issues. Currently both Beta and Gamma Training is working very well, as far as I could say.
