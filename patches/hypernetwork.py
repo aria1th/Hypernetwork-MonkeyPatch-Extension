@@ -524,7 +524,7 @@ def train_hypernetwork(hypernetwork_name, learn_rate, batch_size, data_root, log
 
         textual_inversion.write_loss(log_directory, "hypernetwork_loss.csv", hypernetwork.step, len(ds), {
             "loss": f"{previous_mean_loss:.7f}",
-            "learn_rate": scheduler_beta.get_last_lr() if use_beta_scheduler else scheduler.learn_rate
+            "learn_rate": scheduler_beta.get_last_lr()[-1] if use_beta_scheduler else scheduler.learn_rate
         })
 
         if images_dir is not None and steps_done % create_image_every == 0:
