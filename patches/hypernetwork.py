@@ -120,7 +120,7 @@ class HypernetworkModule(torch.nn.Module):
 
     def forward(self, x, multiplier=None):
         if multiplier is None or not isinstance(multiplier, (int, float)):
-            return x + self.linear(x) * shared.opts.sd_hypernetwork_strength
+            return x + self.linear(x) * (shared.opts.sd_hypernetwork_strength if not self.training else 1)
         return x + self.linear(x) * multiplier
 
     def trainables(self, train=False):
@@ -163,7 +163,6 @@ class Hypernetwork:
         self.optimizer_name = None
         self.optimizer_state_dict = None
         self.dropout_structure = kwargs['dropout_structure'] if 'dropout_structure' in kwargs else None
-        self.should_train = False
         if self.dropout_structure is None:
             self.dropout_structure = parse_dropout_structure(self.layer_structure, self.use_dropout, self.last_layer_dropout)
 
@@ -174,7 +173,7 @@ class Hypernetwork:
                 HypernetworkModule(size, None, self.layer_structure, self.activation_func, self.weight_init,
                                    self.add_layer_norm, self.activate_output, dropout_structure=self.dropout_structure),
             )
-        self.train(self.should_train)
+        self.eval()
 
     def weights(self, train=False):
         res = []
@@ -184,10 +183,6 @@ class Hypernetwork:
         return res
 
     def eval(self):
-        if self.should_train:
-            self.train(True)
-            self.detach_grad()
-            return
         for k, layers in self.layers.items():
             for layer in layers:
                 layer.eval()
@@ -255,7 +250,6 @@ class Hypernetwork:
         self.dropout_structure = state_dict.get('dropout_structure', None)
         if self.dropout_structure is None:
             print("Using previous dropout structure")
-            self.should_train = False  # fix bugs with linear dropout networks being too strong.
             self.dropout_structure = parse_dropout_structure(self.layer_structure, self.use_dropout, self.last_layer_dropout)
         print(f"Dropout structure is set to {self.dropout_structure}")
 
