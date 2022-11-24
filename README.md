@@ -10,7 +10,7 @@ For Variable Dropout, see https://github.com/AUTOMATIC1111/stable-diffusion-webu
 ### Train_Beta tab allows some more options with improved training.
 ![image](https://user-images.githubusercontent.com/35677394/203494907-68e0ef39-4d8c-42de-ba2e-65590375c435.png)
 
-###Features
+### Features
 
 **No-Crop Training**
 ![image](https://user-images.githubusercontent.com/35677394/203495373-cef04677-cdd6-43b0-ba42-d7c0f3d5a78f.png)
@@ -29,3 +29,7 @@ You can train without cropping images.
 This extension also overrides how webui loads and finds hypernetworks, to use variable dropout rates, and etc.
 Thus, hypernetwork created with variable dropout rate might not work correctly in original webui.
 
+### Train_Gamma tab uses Gradient Accumulation from separate PR.
+![image](https://user-images.githubusercontent.com/35677394/203696916-fedfd4b0-7621-47a3-a2e1-33662a42305d.png)
+
+This also fixes some CUDA memory issues. Currently Gamma Training is working very well, as far as I could say.
