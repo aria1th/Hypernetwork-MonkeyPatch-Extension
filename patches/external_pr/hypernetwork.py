@@ -228,8 +228,6 @@ def train_hypernetwork(hypernetwork_name, learn_rate, batch_size, gradient_step,
                     forced_filename = f'{hypernetwork_name}-{steps_done}'
                     last_saved_image = os.path.join(images_dir, forced_filename)
                     hypernetwork.eval()
-                    scaler_state_dict = scaler.state_dict()
-                    del scaler
                     optim_to(optimizer, devices.cpu)
                     gc.collect()
                     shared.sd_model.cond_stage_model.to(devices.device)
@@ -266,7 +264,6 @@ def train_hypernetwork(hypernetwork_name, learn_rate, batch_size, gradient_step,
                         shared.sd_model.first_stage_model.to(devices.cpu)
                     hypernetwork.train()
                     optim_to(optimizer, devices.device)
-                    scaler = torch.cuda.amp.GradScaler(**scaler_state_dict)
                     if image is not None:
                         shared.state.current_image = image
                         last_saved_image, last_text_info = images.save_image(image, images_dir, "", p.seed, p.prompt,
