@@ -120,7 +120,7 @@ class HypernetworkModule(torch.nn.Module):
 
     def forward(self, x, multiplier=None):
         if multiplier is None or not isinstance(multiplier, (int, float)):
-            return x + self.linear(x) * self.multiplier
+            return x + self.linear(x) * HypernetworkModule.multiplier
         return x + self.linear(x) * multiplier
 
     def trainables(self, train=False):
@@ -133,6 +133,13 @@ class HypernetworkModule(torch.nn.Module):
             if type(layer) == torch.nn.Linear or type(layer) == torch.nn.LayerNorm:
                 layer_structure += [layer.weight, layer.bias]
         return layer_structure
+
+    def set_train(self,mode=True):
+        for layer in self.linear:
+            if mode:
+                layer.train(mode)
+            else:
+                layer.eval()
 
 
 class Hypernetwork:
@@ -156,7 +163,7 @@ class Hypernetwork:
         self.optimizer_name = None
         self.optimizer_state_dict = None
         self.dropout_structure = kwargs['dropout_structure'] if 'dropout_structure' in kwargs else None
-        self.should_train = self.dropout_structure is None  # fix bugs with linear dropout networks being too strong.
+        self.should_train = False
         if self.dropout_structure is None:
             self.dropout_structure = parse_dropout_structure(self.layer_structure, self.use_dropout, self.last_layer_dropout)
 
@@ -184,11 +191,12 @@ class Hypernetwork:
         for k, layers in self.layers.items():
             for layer in layers:
                 layer.eval()
+                layer.set_train(False)
 
     def train(self, mode=True):
         for k, layers in self.layers.items():
             for layer in layers:
-                layer.train(mode)
+                layer.set_train(mode)
 
     def detach_grad(self):
         for k, layers in self.layers.items():
@@ -211,7 +219,9 @@ class Hypernetwork:
         state_dict['sd_checkpoint'] = self.sd_checkpoint
         state_dict['sd_checkpoint_name'] = self.sd_checkpoint_name
         state_dict['activate_output'] = self.activate_output
+        state_dict['use_dropout'] = self.use_dropout
         state_dict['dropout_structure'] = self.dropout_structure
+        state_dict['last_layer_dropout'] = self.last_layer_dropout
 
         if self.optimizer_name is not None:
             optimizer_saved_dict['optimizer_name'] = self.optimizer_name
@@ -230,7 +240,6 @@ class Hypernetwork:
         state_dict = torch.load(filename, map_location='cpu')
 
         self.layer_structure = state_dict.get('layer_structure', [1, 2, 1])
-        print(self.layer_structure)
         self.activation_func = state_dict.get('activation_func', None)
         print(f"Activation function is {self.activation_func}")
         self.weight_init = state_dict.get('weight_initialization', 'Normal')
@@ -245,6 +254,8 @@ class Hypernetwork:
         # Dropout structure should have same length as layer structure, Every digits should be in [0,1), and last digit must be 0.
         self.dropout_structure = state_dict.get('dropout_structure', None)
         if self.dropout_structure is None:
+            print("Using previous dropout structure")
+            self.should_train = False  # fix bugs with linear dropout networks being too strong.
             self.dropout_structure = parse_dropout_structure(self.layer_structure, self.use_dropout, self.last_layer_dropout)
         print(f"Dropout structure is set to {self.dropout_structure}")
 
@@ -605,7 +616,10 @@ Last saved image: {html.escape(last_saved_image)}<br/>
     hypernetwork.eval()
     return hypernetwork, filename
 
+def apply_strength(value=None):
+    HypernetworkModule.multiplier = value if value is not None else shared.opts.sd_hypernetwork_strength
 
 modules.hypernetworks.hypernetwork.list_hypernetworks = list_hypernetworks
 modules.hypernetworks.hypernetwork.load_hypernetwork = load_hypernetwork
 modules.hypernetworks.hypernetwork.apply_hypernetwork = apply_hypernetwork
+modules.hypernetworks.hypernetwork.apply_strength = apply_strength
