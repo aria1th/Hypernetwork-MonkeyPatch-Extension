@@ -1,5 +1,6 @@
 import csv
 import datetime
+import gc
 import glob
 import html
 import os
@@ -17,6 +18,7 @@ from modules.textual_inversion.learn_schedule import LearnRateScheduler
 from .textual_inversion import validate_train_inputs, write_loss
 from ..hypernetwork import Hypernetwork, load_hypernetwork
 from . import sd_hijack_checkpoint
+from ..hnutil import optim_to
 from .dataset import PersonalizedBase,PersonalizedDataLoader
 
 
@@ -181,7 +183,9 @@ def train_hypernetwork(hypernetwork_name, learn_rate, batch_size, gradient_step,
                     del c
 
                     _loss_step += loss.item()
-                scaler.scale(loss).backward()
+                    scaler.scale(loss).backward()
+                    batch.latent_sample.to(devices.cpu)
+                    del loss
                 # go back until we reach gradient accumulation steps
                 if (j + 1) % gradient_step != 0:
                     continue
@@ -217,13 +221,17 @@ def train_hypernetwork(hypernetwork_name, learn_rate, batch_size, gradient_step,
                 write_loss(log_directory, "hypernetwork_loss.csv", hypernetwork.step, steps_per_epoch,
                                              {
                                                  "loss": f"{loss_step:.7f}",
-                                                 "learn_rate": scheduler.learn_rate
+                                                 "learn_rate": scheduler_beta.get_last_lr() if use_beta_scheduler else scheduler.learn_rate
                                              })
 
                 if images_dir is not None and steps_done % create_image_every == 0:
                     forced_filename = f'{hypernetwork_name}-{steps_done}'
                     last_saved_image = os.path.join(images_dir, forced_filename)
                     hypernetwork.eval()
+                    scaler_state_dict = scaler.state_dict()
+                    del scaler
+                    optim_to(optimizer, devices.cpu)
+                    gc.collect()
                     shared.sd_model.cond_stage_model.to(devices.device)
                     shared.sd_model.first_stage_model.to(devices.device)
 
@@ -257,6 +265,8 @@ def train_hypernetwork(hypernetwork_name, learn_rate, batch_size, gradient_step,
                         shared.sd_model.cond_stage_model.to(devices.cpu)
                         shared.sd_model.first_stage_model.to(devices.cpu)
                     hypernetwork.train()
+                    optim_to(optimizer, devices.device)
+                    scaler = torch.cuda.amp.GradScaler(**scaler_state_dict)
                     if image is not None:
                         shared.state.current_image = image
                         last_saved_image, last_text_info = images.save_image(image, images_dir, "", p.seed, p.prompt,

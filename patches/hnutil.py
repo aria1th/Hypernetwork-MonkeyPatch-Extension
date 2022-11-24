@@ -7,13 +7,13 @@ def optim_to(optim:torch.optim.Optimizer, device="cpu"):
             obj.data = obj.data.to(target)
         if hasattr(obj, '_grad') and obj._grad is not None:
             obj._grad.data = obj._grad.data.to(target)
-
-    for param in optim.state.values():
-        if isinstance(param, torch.Tensor):
-            inplace_move(param, device)
-        elif isinstance(param, dict):
-            for subparams in param.values():
-                inplace_move(subparams, device)
+    if isinstance(optim, torch.optim.Optimizer):
+        for param in optim.state.values():
+            if isinstance(param, torch.Tensor):
+                inplace_move(param, device)
+            elif isinstance(param, dict):
+                for subparams in param.values():
+                    inplace_move(subparams, device)
     torch.cuda.empty_cache()
 
 
