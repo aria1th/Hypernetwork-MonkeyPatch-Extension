@@ -156,6 +156,7 @@ class Hypernetwork:
         self.optimizer_name = None
         self.optimizer_state_dict = None
         self.dropout_structure = kwargs['dropout_structure'] if 'dropout_structure' in kwargs else None
+        self.should_train = self.dropout_structure is None  # fix bugs with linear dropout networks being too strong.
         if self.dropout_structure is None:
             self.dropout_structure = parse_dropout_structure(self.layer_structure, self.use_dropout, self.last_layer_dropout)
 
@@ -166,7 +167,7 @@ class Hypernetwork:
                 HypernetworkModule(size, None, self.layer_structure, self.activation_func, self.weight_init,
                                    self.add_layer_norm, self.activate_output, dropout_structure=self.dropout_structure),
             )
-        self.eval()
+        self.train(self.should_train)
 
     def weights(self, train=False):
         res = []
@@ -176,16 +177,23 @@ class Hypernetwork:
         return res
 
     def eval(self):
+        if self.should_train:
+            self.train(True)
+            self.detach_grad()
+            return
         for k, layers in self.layers.items():
             for layer in layers:
                 layer.eval()
 
-
-    def train(self):
+    def train(self, mode=True):
         for k, layers in self.layers.items():
             for layer in layers:
-                layer.train()
+                layer.train(mode)
 
+    def detach_grad(self):
+        for k, layers in self.layers.items():
+            for layer in layers:
+                layer.requires_grad_(False)
 
     def save(self, filename):
         state_dict = {}
@@ -267,6 +275,7 @@ class Hypernetwork:
         self.step = state_dict.get('step', 0)
         self.sd_checkpoint = state_dict.get('sd_checkpoint', None)
         self.sd_checkpoint_name = state_dict.get('sd_checkpoint_name', None)
+        self.eval()
 
     def to(self, device):
         for values in self.layers.values():
