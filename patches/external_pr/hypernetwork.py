@@ -151,7 +151,7 @@ def train_hypernetwork(hypernetwork_name, learn_rate, batch_size, gradient_step,
     pbar = tqdm.tqdm(total=steps - initial_step)
     try:
         for i in range((steps - initial_step) * gradient_step):
-            if scheduler.finished:
+            if scheduler.finished or hypernetwork.step > steps:
                 break
             if shared.state.interrupted:
                 break
