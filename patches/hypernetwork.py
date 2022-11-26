@@ -216,7 +216,7 @@ class Hypernetwork:
         state_dict['activate_output'] = self.activate_output
         state_dict['use_dropout'] = self.use_dropout
         state_dict['dropout_structure'] = self.dropout_structure
-        state_dict['last_layer_dropout'] = self.last_layer_dropout
+        state_dict['last_layer_dropout'] = (self.dropout_structure[-2] != 0) if self.dropout_structure is not None else self.last_layer_dropout
 
         if self.optimizer_name is not None:
             optimizer_saved_dict['optimizer_name'] = self.optimizer_name
