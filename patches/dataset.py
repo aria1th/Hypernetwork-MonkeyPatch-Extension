@@ -39,19 +39,19 @@ class PersonalizedBase(Dataset):
 
         cond_model = shared.sd_model.cond_stage_model
 
-        self.image_paths = [os.path.join(data_root, file_path) for file_path in os.listdir(data_root)] * 2
+        self.image_paths = [os.path.join(data_root, file_path) for file_path in os.listdir(data_root)] * batch_size
         print("Preparing dataset...")
         for path in tqdm.tqdm(self.image_paths):
             try:
-                #image = Image.open(path).convert('RGB').resize((self.width, self.height), PIL.Image.BICUBIC)
-                # variable size
                 image = Image.open(path).convert('RGB')
                 w, h = image.size
                 r = max(1, w / self.width, h / self.height) # divide by this
+                amp = min(self.width / w, self.height / h) # if amp < 1, then ignore, else, multiply.
+                if amp > 1:
+                    w, h = w * amp, h * amp
                 w, h = int(w/r), int(h/r)
                 w, h = get_closest(w), get_closest(h)
                 image = image.resize((w,h), PIL.Image.LANCZOS)
-
 
             except Exception:
                 continue

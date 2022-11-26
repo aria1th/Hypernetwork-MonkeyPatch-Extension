@@ -11,7 +11,7 @@ from statistics import stdev, mean
 import torch
 import tqdm
 from torch.nn.init import normal_, xavier_uniform_, zeros_, xavier_normal_, kaiming_uniform_, kaiming_normal_
-from torch.optim.lr_scheduler import ExponentialLR, CosineAnnealingWarmRestarts
+from .scheduler import CosineAnnealingWarmUpRestarts
 
 import modules.hypernetworks.hypernetwork
 from modules import devices, shared, sd_models, processing, sd_samplers
@@ -371,7 +371,7 @@ def train_hypernetwork(hypernetwork_name, learn_rate, batch_size, data_root, log
                        training_height, steps, create_image_every, save_hypernetwork_every, template_file,
                        preview_from_txt2img, preview_prompt, preview_negative_prompt, preview_steps,
                        preview_sampler_index, preview_cfg_scale, preview_seed, preview_width, preview_height,
-                       use_beta_scheduler=False, beta_repeat_epoch=4000, min_lr=1e-7, gamma_rate=1):
+                       use_beta_scheduler=False, beta_repeat_epoch=4000,epoch_mult=1, warmup =10, min_lr=1e-7, gamma_rate=1):
     # images allows training previews to have infotext. Importing it at the top causes a circular import problem.
     from modules import images
     try:
@@ -381,6 +381,10 @@ def train_hypernetwork(hypernetwork_name, learn_rate, batch_size, data_root, log
         assert min_lr < 1, f"Cannot use minimum lr with {min_lr}!"
         gamma_rate = float(gamma_rate)
         assert 0 <= gamma_rate <= 1, f"Cannot use gamma rate with {gamma_rate}!"
+        epoch_mult = int(float(epoch_mult))
+        assert 1 <= epoch_mult, "Cannot use epoch multiplier smaller than 1!"
+        warmup = int(warmup)
+        assert warmup >= 1, "Warmup epoch should be larger than 0!"
     except ValueError:
         raise RuntimeError("Cannot use advanced LR scheduler settings!")
     save_hypernetwork_every = save_hypernetwork_every or 0
@@ -463,9 +467,8 @@ def train_hypernetwork(hypernetwork_name, learn_rate, batch_size, data_root, log
             print("Cannot resume from saved optimizer!")
             print(e)
 
-    scheduler_beta = CosineAnnealingWarmRestarts(optimizer=optimizer, T_0=beta_repeat_epoch, T_mult=1, eta_min=min_lr)
-
-    scheduler_gamma = ExponentialLR(optimizer=optimizer, gamma=gamma_rate)
+    scheduler_beta = CosineAnnealingWarmUpRestarts(optimizer=optimizer, T_0=beta_repeat_epoch, T_mult=epoch_mult, eta_max=scheduler.learn_rate, eta_min=min_lr,
+                                                   gamma=gamma_rate)
     steps_without_grad = 0
 
     last_saved_file = "<none>"
@@ -477,7 +480,6 @@ def train_hypernetwork(hypernetwork_name, learn_rate, batch_size, data_root, log
         hypernetwork.step = i + ititial_step
         if use_beta_scheduler:
             scheduler_beta.step(hypernetwork.step)
-            scheduler_gamma.step(hypernetwork.step)
         if len(loss_dict) > 0:
             previous_mean_losses = [i[-1] for i in loss_dict.values()]
             previous_mean_loss = mean(previous_mean_losses)
@@ -538,7 +540,7 @@ def train_hypernetwork(hypernetwork_name, learn_rate, batch_size, data_root, log
 
         textual_inversion.write_loss(log_directory, "hypernetwork_loss.csv", hypernetwork.step, len(ds), {
             "loss": f"{previous_mean_loss:.7f}",
-            "learn_rate": scheduler_beta.get_last_lr()[-1] if use_beta_scheduler else scheduler.learn_rate
+            "learn_rate": optimizer.param_groups[0]['lr']
         })
 
         if images_dir is not None and steps_done % create_image_every == 0:

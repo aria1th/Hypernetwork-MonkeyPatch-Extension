@@ -55,8 +55,8 @@ class PersonalizedBase(Dataset):
         assert os.path.isdir(data_root), "Dataset directory doesn't exist"
         assert os.listdir(data_root), "Dataset directory is empty"
 
-        self.image_paths = [os.path.join(data_root, file_path) for file_path in os.listdir(data_root)]
-
+        self.image_paths = [os.path.join(data_root, file_path) for file_path in os.listdir(data_root)] * batch_size # We assert batch size > 1 can work, by having multiple same-size images
+        # But note that we can't stack tensors with other size. so its not working now.
         self.shuffle_tags = shuffle_tags
         self.tag_drop_out = tag_drop_out
 
@@ -68,6 +68,9 @@ class PersonalizedBase(Dataset):
                 image = Image.open(path).convert('RGB')
                 w, h = image.size
                 r = max(1, w / self.width, h / self.height) # divide by this
+                amp = min(self.width / w, self.height / h) # if amp < 1, then ignore, else, multiply.
+                if amp > 1:
+                    w, h = w * amp, h * amp
                 w, h = int(w/r), int(h/r)
                 w, h = get_closest(w), get_closest(h)
                 image = image.resize((w,h), PIL.Image.LANCZOS)

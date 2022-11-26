@@ -33,6 +33,8 @@ def create_training_tab(params: script_callbacks.UiTrainTabParams = None):
         with gr.Row(visible=False) as beta_scheduler_options:
             use_beta_scheduler = gr.Checkbox(label='Uses CosineAnnealingWarmRestarts Scheduler')
             beta_repeat_epoch = gr.Textbox(label='Epoch for cycle', placeholder="Cycles every nth epoch", value="4000")
+            epoch_mult = gr.Textbox(label='Epoch multiplier per cycle', placeholder="Cycles length multiplier every cycle", value="1")
+            warmup = gr.Textbox(label='Warmup step per cycle', placeholder="CosineAnnealing lr increase step", value="1")
             min_lr = gr.Textbox(label='Minimum learning rate for beta scheduler',
                                 placeholder="restricts decay value, but does not restrict gamma rate decay",
                                 value="1e-7")
@@ -89,6 +91,8 @@ def create_training_tab(params: script_callbacks.UiTrainTabParams = None):
             *params.txt2img_preview_params,
             use_beta_scheduler,
             beta_repeat_epoch,
+            epoch_mult,
+            warmup,
             min_lr,
             gamma_rate
         ],
