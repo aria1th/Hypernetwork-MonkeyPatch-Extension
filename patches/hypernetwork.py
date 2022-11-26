@@ -65,9 +65,9 @@ class HypernetworkModule(torch.nn.Module):
 
             # Everything should be now parsed into dropout structure, and applied here.
             # Since we only have dropouts after layers, dropout structure should start with 0 and end with 0.
-            if dropout_structure is not None and (p := dropout_structure[i+1]) > 0:
-                assert 0 < p < 1, "Dropout probability should be 0 or float between 0 and 1!"
-                linears.append(torch.nn.Dropout(p=p))
+            if dropout_structure is not None and dropout_structure[i+1] > 0:
+                assert 0 < dropout_structure[i+1] < 1, "Dropout probability should be 0 or float between 0 and 1!"
+                linears.append(torch.nn.Dropout(p=dropout_structure[i+1]))
             # Code explanation : [1, 2, 1] -> dropout is missing when last_layer_dropout is false. [1, 2, 2, 1] -> [0, 0.3, 0, 0], when its True, [0, 0.3, 0.3, 0].
 
         self.linear = torch.nn.Sequential(*linears)
