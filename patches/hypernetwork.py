@@ -162,7 +162,7 @@ class Hypernetwork:
         self.last_layer_dropout = kwargs['last_layer_dropout'] if 'last_layer_dropout' in kwargs else True
         self.optimizer_name = None
         self.optimizer_state_dict = None
-        self.dropout_structure = kwargs['dropout_structure'] if 'dropout_structure' in kwargs else None
+        self.dropout_structure = kwargs['dropout_structure'] if 'dropout_structure' in kwargs and use_dropout else None
         if self.dropout_structure is None:
             self.dropout_structure = parse_dropout_structure(self.layer_structure, self.use_dropout, self.last_layer_dropout)
 
@@ -241,13 +241,13 @@ class Hypernetwork:
         print(f"Weight initialization is {self.weight_init}")
         self.add_layer_norm = state_dict.get('is_layer_norm', False)
         print(f"Layer norm is set to {self.add_layer_norm}")
-        self.use_dropout = state_dict.get('use_dropout', False)
+        self.dropout_structure = state_dict.get('dropout_structure', None)
+        self.use_dropout = True if self.dropout_structure is not None and any(self.dropout_structure) else state_dict.get('use_dropout', False)
         print(f"Dropout usage is set to {self.use_dropout}" )
         self.activate_output = state_dict.get('activate_output', True)
         print(f"Activate last layer is set to {self.activate_output}")
         self.last_layer_dropout = state_dict.get('last_layer_dropout', False)  # Silent fix for HNs before 4918eb6
         # Dropout structure should have same length as layer structure, Every digits should be in [0,1), and last digit must be 0.
-        self.dropout_structure = state_dict.get('dropout_structure', None)
         if self.dropout_structure is None:
             print("Using previous dropout structure")
             self.dropout_structure = parse_dropout_structure(self.layer_structure, self.use_dropout, self.last_layer_dropout)
