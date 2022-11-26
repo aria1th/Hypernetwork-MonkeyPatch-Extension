@@ -30,6 +30,11 @@ This extension also overrides how webui loads and finds hypernetworks, to use va
 Thus, hypernetwork created with variable dropout rate might not work correctly in original webui.
 
 ### Train_Gamma tab uses Gradient Accumulation from separate PR.(as well as beta functionalities)
-![image](https://user-images.githubusercontent.com/35677394/203696916-fedfd4b0-7621-47a3-a2e1-33662a42305d.png)
+![image](https://user-images.githubusercontent.com/35677394/204087550-94b8e7fb-70cb-4157-96bc-e022340901c9.png)
+
+
+
+### CosineAnnealingWarmupRestarts
+![image](https://user-images.githubusercontent.com/35677394/204087530-b7938e7e-ebe5-4326-b5cd-25480645a11b.png)
 
 This also fixes some CUDA memory issues. Currently both Beta and Gamma Training is working very well, as far as I could say.
