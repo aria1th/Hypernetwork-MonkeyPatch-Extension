@@ -123,6 +123,7 @@ def create_extension_tab(params=None):
         new_hypernetwork_dropout_structure = gr.Textbox("0, 0, 0",
                                                         label="Enter hypernetwork Dropout structure (or empty). Recommended : 0~0.35 incrementing sequence: 0, 0.05, 0.15",
                                                         placeholder="1st and last digit must be 0 and values should be between 0 and 1. ex:'0, 0.01, 0'")
+        optional_info = gr.Textbox("", label="Optional information about Hypernetwork", placeholder="Training information, dateset, etc")
         overwrite_old_hypernetwork = gr.Checkbox(value=False, label="Overwrite Old Hypernetwork")
 
         with gr.Row():
@@ -144,7 +145,8 @@ def create_extension_tab(params=None):
                 new_hypernetwork_initialization_option,
                 new_hypernetwork_add_layer_norm,
                 new_hypernetwork_use_dropout,
-                new_hypernetwork_dropout_structure
+                new_hypernetwork_dropout_structure,
+                optional_info
             ],
             outputs=[
                 new_hypernetwork_name,

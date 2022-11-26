@@ -163,6 +163,7 @@ class Hypernetwork:
         self.optimizer_name = None
         self.optimizer_state_dict = None
         self.dropout_structure = kwargs['dropout_structure'] if 'dropout_structure' in kwargs and use_dropout else None
+        self.optional_info = kwargs.get('optional_info', None)
         if self.dropout_structure is None:
             self.dropout_structure = parse_dropout_structure(self.layer_structure, self.use_dropout, self.last_layer_dropout)
 
@@ -217,6 +218,7 @@ class Hypernetwork:
         state_dict['use_dropout'] = self.use_dropout
         state_dict['dropout_structure'] = self.dropout_structure
         state_dict['last_layer_dropout'] = (self.dropout_structure[-2] != 0) if self.dropout_structure is not None else self.last_layer_dropout
+        state_dict['optional_info'] = self.optional_info if self.optional_info else None
 
         if self.optimizer_name is not None:
             optimizer_saved_dict['optimizer_name'] = self.optimizer_name
@@ -235,6 +237,11 @@ class Hypernetwork:
         state_dict = torch.load(filename, map_location='cpu')
 
         self.layer_structure = state_dict.get('layer_structure', [1, 2, 1])
+        print(self.layer_structure)
+        optional_info = state_dict.get('optional_info', None)
+        if optional_info is not None:
+            print(f"INFO:\n {optional_info}\n")
+            self.optional_info = optional_info
         self.activation_func = state_dict.get('activation_func', None)
         print(f"Activation function is {self.activation_func}")
         self.weight_init = state_dict.get('weight_initialization', 'Normal')

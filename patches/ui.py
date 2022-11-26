@@ -6,7 +6,7 @@ from .hypernetwork import Hypernetwork, train_hypernetwork
 import gradio as gr
 
 
-def create_hypernetwork(name, enable_sizes, overwrite_old, layer_structure=None, activation_func=None, weight_init=None, add_layer_norm=False, use_dropout=False, dropout_structure=None):
+def create_hypernetwork(name, enable_sizes, overwrite_old, layer_structure=None, activation_func=None, weight_init=None, add_layer_norm=False, use_dropout=False, dropout_structure=None, optional_info=None):
     # Remove illegal characters from name.
     name = "".join( x for x in name if (x.isalnum() or x in "._- "))
     assert name, "Name cannot be empty!"
@@ -28,7 +28,8 @@ def create_hypernetwork(name, enable_sizes, overwrite_old, layer_structure=None,
         weight_init=weight_init,
         add_layer_norm=add_layer_norm,
         use_dropout=use_dropout,
-        dropout_structure=dropout_structure if use_dropout and dropout_structure else [0] * len(layer_structure)
+        dropout_structure=dropout_structure if use_dropout and dropout_structure else [0] * len(layer_structure),
+        optional_info=optional_info
     )
     hypernet.save(fn)
 
