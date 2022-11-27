@@ -382,16 +382,25 @@ def train_hypernetwork(hypernetwork_name, learn_rate, batch_size, data_root, log
     # images allows training previews to have infotext. Importing it at the top causes a circular import problem.
     from modules import images
     try:
-        beta_repeat_epoch = int(beta_repeat_epoch)
-        assert beta_repeat_epoch > 0, f"Cannot use too small cycle {beta_repeat_epoch}!"
-        min_lr = float(min_lr)
-        assert min_lr < 1, f"Cannot use minimum lr with {min_lr}!"
-        gamma_rate = float(gamma_rate)
-        assert 0 <= gamma_rate <= 1, f"Cannot use gamma rate with {gamma_rate}!"
-        epoch_mult = int(float(epoch_mult))
-        assert 1 <= epoch_mult, "Cannot use epoch multiplier smaller than 1!"
-        warmup = int(warmup)
-        assert warmup >= 1, "Warmup epoch should be larger than 0!"
+        if use_beta_scheduler:
+            print("Using Beta Scheduler")
+            beta_repeat_epoch = int(beta_repeat_epoch)
+            assert beta_repeat_epoch > 0, f"Cannot use too small cycle {beta_repeat_epoch}!"
+            min_lr = float(min_lr)
+            assert min_lr < 1, f"Cannot use minimum lr with {min_lr}!"
+            gamma_rate = float(gamma_rate)
+            print(f"Using learn rate decay(per cycle) of {gamma_rate}")
+            assert 0 <= gamma_rate <= 1, f"Cannot use gamma rate with {gamma_rate}!"
+            epoch_mult = int(float(epoch_mult))
+            assert 1 <= epoch_mult, "Cannot use epoch multiplier smaller than 1!"
+            warmup = int(warmup)
+            assert warmup >= 1, "Warmup epoch should be larger than 0!"
+        else:
+            beta_repeat_epoch = 4000
+            epoch_mult=1
+            warmup=10
+            min_lr=1e-7
+            gamma_rate=1
     except ValueError:
         raise RuntimeError("Cannot use advanced LR scheduler settings!")
     save_hypernetwork_every = save_hypernetwork_every or 0
@@ -474,7 +483,7 @@ def train_hypernetwork(hypernetwork_name, learn_rate, batch_size, data_root, log
             print("Cannot resume from saved optimizer!")
             print(e)
 
-    scheduler_beta = CosineAnnealingWarmUpRestarts(optimizer=optimizer, first_cycle_steps=beta_repeat_epoch, cycle_mult=epoch_mult, max_lr=scheduler.learn_rate, min_lr=min_lr, gamma=gamma_rate)
+    scheduler_beta = CosineAnnealingWarmUpRestarts(optimizer=optimizer, first_cycle_steps=beta_repeat_epoch, cycle_mult=epoch_mult, max_lr=scheduler.learn_rate,warmup_steps=warmup, min_lr=min_lr, gamma=gamma_rate)
     scheduler_beta.last_epoch =hypernetwork.step-1
     steps_without_grad = 0
 
