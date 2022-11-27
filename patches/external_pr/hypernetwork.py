@@ -32,11 +32,14 @@ def train_hypernetwork(hypernetwork_name, learn_rate, batch_size, gradient_step,
     # images allows training previews to have infotext. Importing it at the top causes a circular import problem.
     from modules import images
     try:
+        if use_beta_scheduler:
+            print("Using Beta Scheduler")
         beta_repeat_epoch = int(beta_repeat_epoch)
         assert beta_repeat_epoch > 0, f"Cannot use too small cycle {beta_repeat_epoch}!"
         min_lr = float(min_lr)
         assert min_lr < 1, f"Cannot use minimum lr with {min_lr}!"
         gamma_rate = float(gamma_rate)
+        print(f"Using learn rate decay(per cycle) of {gamma_rate}")
         assert 0 <= gamma_rate <= 1, f"Cannot use gamma rate with {gamma_rate}!"
         epoch_mult = int(float(epoch_mult))
         assert 1 <= epoch_mult, "Cannot use epoch multiplier smaller than 1!"
@@ -115,11 +118,11 @@ def train_hypernetwork(hypernetwork_name, learn_rate, batch_size, gradient_step,
 
     # Here we use optimizer from saved HN, or we can specify as UI option.
     if hypernetwork.optimizer_name in optimizer_dict:
-        optimizer = optimizer_dict[hypernetwork.optimizer_name](params=weights, lr=scheduler.learn_rate)
+        optimizer = optimizer_dict[hypernetwork.optimizer_name](params=weights, lr=0 if use_beta_scheduler else scheduler.learn_rate)
         optimizer_name = hypernetwork.optimizer_name
     else:
         print(f"Optimizer type {hypernetwork.optimizer_name} is not defined!")
-        optimizer = torch.optim.AdamW(params=weights, lr=scheduler.learn_rate)
+        optimizer = torch.optim.AdamW(params=weights, lr=0 if use_beta_scheduler else scheduler.learn_rate)
         optimizer_name = 'AdamW'
 
     if hypernetwork.optimizer_state_dict:  # This line must be changed if Optimizer type can be different from saved optimizer.
@@ -128,7 +131,7 @@ def train_hypernetwork(hypernetwork_name, learn_rate, batch_size, gradient_step,
         except RuntimeError as e:
             print("Cannot resume from saved optimizer!")
             print(e)
-    scheduler_beta = CosineAnnealingWarmUpRestarts(optimizer=optimizer, T_0=beta_repeat_epoch, T_mult=epoch_mult, eta_max=scheduler.learn_rate, eta_min=min_lr, gamma=gamma_rate)
+    scheduler_beta = CosineAnnealingWarmUpRestarts(optimizer=optimizer, first_cycle_steps=beta_repeat_epoch, cycle_mult=epoch_mult, max_lr=scheduler.learn_rate, min_lr=min_lr, gamma=gamma_rate, last_epoch=hypernetwork.step)
     scaler = torch.cuda.amp.GradScaler()
 
     batch_size = ds.batch_size
