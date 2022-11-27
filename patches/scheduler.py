@@ -90,6 +90,21 @@ class CosineAnnealingWarmUpRestarts(_LRScheduler):
         for param_group, lr in zip(self.optimizer.param_groups, self.get_lr()):
             param_group['lr'] = lr
 
-    def is_EOC(self):
+    def is_EOC(self, epoch=None):
+        saved_cycle = self.cycle
+        expect_cycle = saved_cycle
+        step_in_cycle_2 = self.step_in_cycle
+        cur_cycle_step_2 = self.cur_cycle_steps
+        if epoch is None:
+            step_in_cycle_2 = step_in_cycle_2 + 1
+            if step_in_cycle_2 >= cur_cycle_step_2:
+                expect_cycle += 1
+        else:
+            if epoch >= self.first_cycle_steps:
+                if self.cycle_mult == 1.:
+                    expect_cycle = epoch // self.first_cycle_steps
+                else:
+                    n = int(math.log((epoch / self.first_cycle_steps * (self.cycle_mult - 1) + 1), self.cycle_mult))
+                    expect_cycle = n
         ''' returns if current cycle is end of cycle'''
-        return self.step_in_cycle + 1 == self.cur_cycle_steps
+        return expect_cycle > saved_cycle

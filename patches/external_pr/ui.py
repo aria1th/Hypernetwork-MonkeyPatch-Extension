@@ -56,18 +56,18 @@ def on_train_gamma_tab(params=None):
             embedding_learn_rate = gr.Textbox(label='Embedding Learning rate',
                                               placeholder="Embedding Learning rate", value="0.005")
             hypernetwork_learn_rate = gr.Textbox(label='Hypernetwork Learning rate',
-                                                 placeholder="Hypernetwork Learning rate", value="0.00001")
+                                                 placeholder="Hypernetwork Learning rate", value="0.00004")
             use_beta_scheduler_checkbox = gr.Checkbox(
                 label='Show advanced learn rate scheduler options(for Hypernetworks)')
         with gr.Row(visible=False) as beta_scheduler_options:
-            use_beta_scheduler = gr.Checkbox(label='Uses CosineAnnealingWarmRestarts Scheduler')
-            beta_repeat_epoch = gr.Textbox(label='Epoch for cycle', placeholder="Cycles every nth epoch", value="4000")
-            epoch_mult = gr.Textbox(label='Epoch multiplier per cycle', placeholder="Cycles length multiplier every cycle", value="1")
-            warmup = gr.Textbox(label='Warmup step per cycle', placeholder="CosineAnnealing lr increase step", value="1")
+            use_beta_scheduler = gr.Checkbox(label='Uses CosineAnnealingWarmupRestarts Scheduler')
+            beta_repeat_epoch = gr.Textbox(label='Steps for cycle', placeholder="Cycles every nth Step", value="64")
+            epoch_mult = gr.Textbox(label='Step multiplier per cycle', placeholder="Step length multiplier every cycle", value="1")
+            warmup = gr.Textbox(label='Warmup step per cycle', placeholder="CosineAnnealing lr increase step", value="5")
             min_lr = gr.Textbox(label='Minimum learning rate for beta scheduler',
                                 placeholder="restricts decay value, but does not restrict gamma rate decay",
-                                value="1e-7")
-            gamma_rate = gr.Textbox(label='Separate learning rate decay for ExponentialLR',
+                                value="6e-7")
+            gamma_rate = gr.Textbox(label='Decays learning rate every cycle',
                                     placeholder="Value should be in (0-1]", value="1")
         with gr.Row(visible=False) as beta_scheduler_options2:
             save_converge_opt = gr.Checkbox(label="Saves when every cycle finishes")

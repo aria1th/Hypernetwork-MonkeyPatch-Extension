@@ -45,6 +45,8 @@ def train_hypernetwork(hypernetwork_name, learn_rate, batch_size, gradient_step,
             assert 1 <= epoch_mult, "Cannot use epoch multiplier smaller than 1!"
             warmup = int(warmup)
             assert warmup >= 1, "Warmup epoch should be larger than 0!"
+            print(f"Save when converges : {save_when_converge}")
+            print(f"Generate image when converges : {create_when_converge}")
         else:
             save_when_converge = False
             create_when_converge = False
