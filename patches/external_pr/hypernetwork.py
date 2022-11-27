@@ -214,6 +214,7 @@ def train_hypernetwork(hypernetwork_name, learn_rate, batch_size, gradient_step,
                     scaler.step(optimizer)
                 except AssertionError:
                     optimizer.param_groups[0]['capturable'] = True
+                    scaler.step(optimizer)
                 scaler.update()
                 hypernetwork.step += 1
                 pbar.update()
