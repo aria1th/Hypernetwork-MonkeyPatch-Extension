@@ -91,7 +91,6 @@ class CosineAnnealingWarmUpRestarts(_LRScheduler):
             param_group['lr'] = lr
 
     def is_EOC(self, epoch=None):
-        epoch = epoch+1 if epoch is not None else None
         saved_cycle = self.cycle
         expect_cycle = saved_cycle
         step_in_cycle_2 = self.step_in_cycle

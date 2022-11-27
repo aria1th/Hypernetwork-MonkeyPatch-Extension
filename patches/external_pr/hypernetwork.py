@@ -219,8 +219,9 @@ def train_hypernetwork(hypernetwork_name, learn_rate, batch_size, gradient_step,
                 epoch_step = hypernetwork.step % steps_per_epoch
 
                 pbar.set_description(f"[Epoch {epoch_num}: {epoch_step + 1}/{steps_per_epoch}]loss: {loss_step:.7f}")
-                if hypernetwork_dir is not None and ((use_beta_scheduler and scheduler_beta.is_EOC() and save_when_converge) or (save_hypernetwork_every > 0 and steps_done % save_hypernetwork_every == 0)):
+                if hypernetwork_dir is not None and ((use_beta_scheduler and scheduler_beta.is_EOC(hypernetwork.step) and save_when_converge) or (save_hypernetwork_every > 0 and steps_done % save_hypernetwork_every == 0)):
                     # Before saving, change name to match current checkpoint.
+                    print(optimizer.param_groups[0]['lr'])
                     hypernetwork_name_every = f'{hypernetwork_name}-{steps_done}'
                     last_saved_file = os.path.join(hypernetwork_dir, f'{hypernetwork_name_every}.pt')
                     hypernetwork.optimizer_name = optimizer_name
@@ -235,7 +236,7 @@ def train_hypernetwork(hypernetwork_name, learn_rate, batch_size, gradient_step,
                                                  "learn_rate": optimizer.param_groups[0]['lr']
                                              })
 
-                if images_dir is not None and (use_beta_scheduler and scheduler_beta.is_EOC() and create_when_converge) or (create_image_every > 0 and steps_done % create_image_every == 0):
+                if images_dir is not None and (use_beta_scheduler and scheduler_beta.is_EOC(hypernetwork.step) and create_when_converge) or (create_image_every > 0 and steps_done % create_image_every == 0):
                     forced_filename = f'{hypernetwork_name}-{steps_done}'
                     last_saved_image = os.path.join(images_dir, forced_filename)
                     hypernetwork.eval()
