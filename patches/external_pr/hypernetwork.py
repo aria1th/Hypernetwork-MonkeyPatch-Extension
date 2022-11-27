@@ -70,13 +70,13 @@ def train_hypernetwork(hypernetwork_name, learn_rate, batch_size, gradient_step,
     log_directory = os.path.join(log_directory, datetime.datetime.now().strftime("%Y-%m-%d"), hypernetwork_name)
     unload = shared.opts.unload_models_when_training
 
-    if save_hypernetwork_every > 0:
+    if save_hypernetwork_every > 0 or save_when_converge:
         hypernetwork_dir = os.path.join(log_directory, "hypernetworks")
         os.makedirs(hypernetwork_dir, exist_ok=True)
     else:
         hypernetwork_dir = None
 
-    if create_image_every > 0:
+    if create_image_every > 0 or create_when_converge:
         images_dir = os.path.join(log_directory, "images")
         os.makedirs(images_dir, exist_ok=True)
     else:
@@ -217,7 +217,7 @@ def train_hypernetwork(hypernetwork_name, learn_rate, batch_size, gradient_step,
                 epoch_step = hypernetwork.step % steps_per_epoch
 
                 pbar.set_description(f"[Epoch {epoch_num}: {epoch_step + 1}/{steps_per_epoch}]loss: {loss_step:.7f}")
-                if hypernetwork_dir is not None and ((use_beta_scheduler and scheduler_beta.is_EOC() and save_when_converge) or (steps_done % save_hypernetwork_every == 0)):
+                if hypernetwork_dir is not None and ((use_beta_scheduler and scheduler_beta.is_EOC() and save_when_converge) or (save_hypernetwork_every > 0 and steps_done % save_hypernetwork_every == 0)):
                     # Before saving, change name to match current checkpoint.
                     hypernetwork_name_every = f'{hypernetwork_name}-{steps_done}'
                     last_saved_file = os.path.join(hypernetwork_dir, f'{hypernetwork_name_every}.pt')
@@ -233,7 +233,7 @@ def train_hypernetwork(hypernetwork_name, learn_rate, batch_size, gradient_step,
                                                  "learn_rate": optimizer.param_groups[0]['lr']
                                              })
 
-                if images_dir is not None and (use_beta_scheduler and scheduler_beta.is_EOC() and create_when_converge) or (steps_done % create_image_every == 0):
+                if images_dir is not None and (use_beta_scheduler and scheduler_beta.is_EOC() and create_when_converge) or (create_image_every > 0 and steps_done % create_image_every == 0):
                     forced_filename = f'{hypernetwork_name}-{steps_done}'
                     last_saved_image = os.path.join(images_dir, forced_filename)
                     hypernetwork.eval()
