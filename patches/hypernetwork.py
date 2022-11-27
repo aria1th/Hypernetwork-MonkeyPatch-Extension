@@ -635,3 +635,5 @@ modules.hypernetworks.hypernetwork.list_hypernetworks = list_hypernetworks
 modules.hypernetworks.hypernetwork.load_hypernetwork = load_hypernetwork
 modules.hypernetworks.hypernetwork.apply_hypernetwork = apply_hypernetwork
 modules.hypernetworks.hypernetwork.apply_strength = apply_strength
+modules.hypernetworks.hypernetwork.Hypernetwork = Hypernetwork
+modules.hypernetworks.hypernetwork.HypernetworkModule = HypernetworkModule

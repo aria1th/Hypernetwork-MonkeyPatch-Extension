@@ -9,6 +9,7 @@ from modules.paths import script_path
 from modules.ui import create_refresh_button, gr_show
 import patches.textual_inversion as textual_inversion
 import patches.ui as ui
+import patches.shared as shared_patch
 import patches.external_pr.ui as external_patch_ui
 from webui import wrap_gradio_gpu_call
 
@@ -156,7 +157,7 @@ def create_extension_tab(params=None):
         )
     return [(create_beta, "Create_beta", "create_beta")]
 
-script_callbacks.on_ui_train_tabs(create_training_tab)
+#script_callbacks.on_ui_train_tabs(create_training_tab)   # Deprecate Beta Training
 script_callbacks.on_ui_train_tabs(create_extension_tab)
 script_callbacks.on_ui_train_tabs(external_patch_ui.on_train_gamma_tab)
 
