@@ -69,10 +69,18 @@ def on_train_gamma_tab(params=None):
                                 value="1e-7")
             gamma_rate = gr.Textbox(label='Separate learning rate decay for ExponentialLR',
                                     placeholder="Value should be in (0-1]", value="1")
+        with gr.Row(visible=False) as beta_scheduler_options2:
+            save_converge_opt = gr.Checkbox(label="Saves when every cycle finishes")
+            generate_converge_opt = gr.Checkbox(label="Generates image when every cycle finishes")
         use_beta_scheduler_checkbox.change(
             fn=lambda show: gr_show(show),
             inputs=[use_beta_scheduler_checkbox],
             outputs=[beta_scheduler_options],
+        )
+        use_beta_scheduler_checkbox.change(
+            fn=lambda show: gr_show(show),
+            inputs=[use_beta_scheduler_checkbox],
+            outputs=[beta_scheduler_options2],
         )
         batch_size = gr.Number(label='Batch size', value=1, precision=0)
         gradient_step = gr.Number(label='Gradient accumulation steps', value=1, precision=0)
@@ -163,7 +171,9 @@ def on_train_gamma_tab(params=None):
             epoch_mult,
             warmup,
             min_lr,
-            gamma_rate
+            gamma_rate,
+            save_converge_opt,
+            generate_converge_opt
         ],
         outputs=[
             ti_output,

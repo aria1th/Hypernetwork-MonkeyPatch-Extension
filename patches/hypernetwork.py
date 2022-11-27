@@ -474,7 +474,8 @@ def train_hypernetwork(hypernetwork_name, learn_rate, batch_size, data_root, log
             print("Cannot resume from saved optimizer!")
             print(e)
 
-    scheduler_beta = CosineAnnealingWarmUpRestarts(optimizer=optimizer, first_cycle_steps=beta_repeat_epoch, cycle_mult=epoch_mult, max_lr=scheduler.learn_rate, min_lr=min_lr, gamma=gamma_rate, last_epoch=hypernetwork.step)
+    scheduler_beta = CosineAnnealingWarmUpRestarts(optimizer=optimizer, first_cycle_steps=beta_repeat_epoch, cycle_mult=epoch_mult, max_lr=scheduler.learn_rate, min_lr=min_lr, gamma=gamma_rate)
+    scheduler_beta.last_epoch =hypernetwork.step-1
     steps_without_grad = 0
 
     last_saved_file = "<none>"

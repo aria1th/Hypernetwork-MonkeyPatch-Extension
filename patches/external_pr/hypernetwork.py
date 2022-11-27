@@ -28,23 +28,26 @@ def train_hypernetwork(hypernetwork_name, learn_rate, batch_size, gradient_step,
                        create_image_every, save_hypernetwork_every, template_file, preview_from_txt2img, preview_prompt,
                        preview_negative_prompt, preview_steps, preview_sampler_index, preview_cfg_scale, preview_seed,
                        preview_width, preview_height,
-                       use_beta_scheduler=False, beta_repeat_epoch=4000, epoch_mult=1,warmup =10, min_lr=1e-7, gamma_rate=1):
+                       use_beta_scheduler=False, beta_repeat_epoch=4000, epoch_mult=1,warmup =10, min_lr=1e-7, gamma_rate=1, save_when_converge=False, create_when_converge=False):
     # images allows training previews to have infotext. Importing it at the top causes a circular import problem.
     from modules import images
     try:
         if use_beta_scheduler:
             print("Using Beta Scheduler")
-        beta_repeat_epoch = int(beta_repeat_epoch)
-        assert beta_repeat_epoch > 0, f"Cannot use too small cycle {beta_repeat_epoch}!"
-        min_lr = float(min_lr)
-        assert min_lr < 1, f"Cannot use minimum lr with {min_lr}!"
-        gamma_rate = float(gamma_rate)
-        print(f"Using learn rate decay(per cycle) of {gamma_rate}")
-        assert 0 <= gamma_rate <= 1, f"Cannot use gamma rate with {gamma_rate}!"
-        epoch_mult = int(float(epoch_mult))
-        assert 1 <= epoch_mult, "Cannot use epoch multiplier smaller than 1!"
-        warmup = int(warmup)
-        assert warmup >= 1, "Warmup epoch should be larger than 0!"
+            beta_repeat_epoch = int(beta_repeat_epoch)
+            assert beta_repeat_epoch > 0, f"Cannot use too small cycle {beta_repeat_epoch}!"
+            min_lr = float(min_lr)
+            assert min_lr < 1, f"Cannot use minimum lr with {min_lr}!"
+            gamma_rate = float(gamma_rate)
+            print(f"Using learn rate decay(per cycle) of {gamma_rate}")
+            assert 0 <= gamma_rate <= 1, f"Cannot use gamma rate with {gamma_rate}!"
+            epoch_mult = int(float(epoch_mult))
+            assert 1 <= epoch_mult, "Cannot use epoch multiplier smaller than 1!"
+            warmup = int(warmup)
+            assert warmup >= 1, "Warmup epoch should be larger than 0!"
+        else:
+            save_when_converge = False
+            create_when_converge = False
     except ValueError:
         raise RuntimeError("Cannot use advanced LR scheduler settings!")
     save_hypernetwork_every = save_hypernetwork_every or 0
@@ -131,7 +134,8 @@ def train_hypernetwork(hypernetwork_name, learn_rate, batch_size, gradient_step,
         except RuntimeError as e:
             print("Cannot resume from saved optimizer!")
             print(e)
-    scheduler_beta = CosineAnnealingWarmUpRestarts(optimizer=optimizer, first_cycle_steps=beta_repeat_epoch, cycle_mult=epoch_mult, max_lr=scheduler.learn_rate, min_lr=min_lr, gamma=gamma_rate, last_epoch=hypernetwork.step)
+    scheduler_beta = CosineAnnealingWarmUpRestarts(optimizer=optimizer, first_cycle_steps=beta_repeat_epoch, cycle_mult=epoch_mult, max_lr=scheduler.learn_rate, min_lr=min_lr, gamma=gamma_rate)
+    scheduler_beta.last_epoch =hypernetwork.step-1
     scaler = torch.cuda.amp.GradScaler()
 
     batch_size = ds.batch_size
@@ -213,7 +217,7 @@ def train_hypernetwork(hypernetwork_name, learn_rate, batch_size, gradient_step,
                 epoch_step = hypernetwork.step % steps_per_epoch
 
                 pbar.set_description(f"[Epoch {epoch_num}: {epoch_step + 1}/{steps_per_epoch}]loss: {loss_step:.7f}")
-                if hypernetwork_dir is not None and steps_done % save_hypernetwork_every == 0:
+                if hypernetwork_dir is not None and ((use_beta_scheduler and scheduler_beta.is_EOC() and save_when_converge) or (steps_done % save_hypernetwork_every == 0)):
                     # Before saving, change name to match current checkpoint.
                     hypernetwork_name_every = f'{hypernetwork_name}-{steps_done}'
                     last_saved_file = os.path.join(hypernetwork_dir, f'{hypernetwork_name_every}.pt')
@@ -229,7 +233,7 @@ def train_hypernetwork(hypernetwork_name, learn_rate, batch_size, gradient_step,
                                                  "learn_rate": optimizer.param_groups[0]['lr']
                                              })
 
-                if images_dir is not None and steps_done % create_image_every == 0:
+                if images_dir is not None and (use_beta_scheduler and scheduler_beta.is_EOC() and create_when_converge) or (steps_done % create_image_every == 0):
                     forced_filename = f'{hypernetwork_name}-{steps_done}'
                     last_saved_image = os.path.join(images_dir, forced_filename)
                     hypernetwork.eval()
