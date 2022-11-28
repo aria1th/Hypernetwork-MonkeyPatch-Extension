@@ -82,6 +82,7 @@ def on_train_gamma_tab(params=None):
             inputs=[use_beta_scheduler_checkbox],
             outputs=[beta_scheduler_options2],
         )
+        move_optim_when_generate = gr.Checkbox(label="Unload Optimizer when generating preview(hypernetwork)", value=True)
         batch_size = gr.Number(label='Batch size', value=1, precision=0)
         gradient_step = gr.Number(label='Gradient accumulation steps', value=1, precision=0)
         dataset_directory = gr.Textbox(label='Dataset directory', placeholder="Path to directory with input images")
@@ -173,7 +174,8 @@ def on_train_gamma_tab(params=None):
             min_lr,
             gamma_rate,
             save_converge_opt,
-            generate_converge_opt
+            generate_converge_opt,
+            move_optim_when_generate
         ],
         outputs=[
             ti_output,

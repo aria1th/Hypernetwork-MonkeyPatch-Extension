@@ -28,7 +28,8 @@ def train_hypernetwork(hypernetwork_name, learn_rate, batch_size, gradient_step,
                        create_image_every, save_hypernetwork_every, template_file, preview_from_txt2img, preview_prompt,
                        preview_negative_prompt, preview_steps, preview_sampler_index, preview_cfg_scale, preview_seed,
                        preview_width, preview_height,
-                       use_beta_scheduler=False, beta_repeat_epoch=4000, epoch_mult=1,warmup =10, min_lr=1e-7, gamma_rate=1, save_when_converge=False, create_when_converge=False):
+                       use_beta_scheduler=False, beta_repeat_epoch=4000, epoch_mult=1,warmup =10, min_lr=1e-7, gamma_rate=1, save_when_converge=False, create_when_converge=False,
+                       move_optimizer=True):
     # images allows training previews to have infotext. Importing it at the top causes a circular import problem.
     from modules import images
     try:
@@ -138,6 +139,7 @@ def train_hypernetwork(hypernetwork_name, learn_rate, batch_size, gradient_step,
     if hypernetwork.optimizer_state_dict:  # This line must be changed if Optimizer type can be different from saved optimizer.
         try:
             optimizer.load_state_dict(hypernetwork.optimizer_state_dict)
+            optim_to(optimizer, devices.device)
         except RuntimeError as e:
             print("Cannot resume from saved optimizer!")
             print(e)
@@ -248,8 +250,9 @@ def train_hypernetwork(hypernetwork_name, learn_rate, batch_size, gradient_step,
                     forced_filename = f'{hypernetwork_name}-{steps_done}'
                     last_saved_image = os.path.join(images_dir, forced_filename)
                     hypernetwork.eval()
-                    optim_to(optimizer, devices.cpu)
-                    gc.collect()
+                    if move_optimizer:
+                        optim_to(optimizer, devices.cpu)
+                        gc.collect()
                     shared.sd_model.cond_stage_model.to(devices.device)
                     shared.sd_model.first_stage_model.to(devices.device)
 
@@ -283,7 +286,8 @@ def train_hypernetwork(hypernetwork_name, learn_rate, batch_size, gradient_step,
                         shared.sd_model.cond_stage_model.to(devices.cpu)
                         shared.sd_model.first_stage_model.to(devices.cpu)
                     hypernetwork.train()
-                    optim_to(optimizer, devices.device)
+                    if move_optimizer:
+                        optim_to(optimizer, devices.device)
                     if image is not None:
                         shared.state.current_image = image
                         last_saved_image, last_text_info = images.save_image(image, images_dir, "", p.seed, p.prompt,
