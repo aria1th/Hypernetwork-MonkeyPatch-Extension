@@ -169,6 +169,7 @@ class BatchLoader:
         self.cond_text = [entry.cond_text for entry in data]
         self.cond = [entry.cond for entry in data]
         self.latent_sample = torch.stack([entry.latent_sample for entry in data]).squeeze(1)
+        self.filename = [entry.filename for entry in data]
         # self.emb_index = [entry.emb_index for entry in data]
         # print(self.latent_sample.device)
 
