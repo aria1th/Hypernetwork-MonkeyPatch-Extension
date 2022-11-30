@@ -36,7 +36,7 @@ class HypernetworkModule(torch.nn.Module):
     activation_dict.update({cls_name.lower(): cls_obj for cls_name, cls_obj in inspect.getmembers(torch.nn.modules.activation) if inspect.isclass(cls_obj) and cls_obj.__module__ == 'torch.nn.modules.activation'})
 
     def __init__(self, dim, state_dict=None, layer_structure=None, activation_func=None, weight_init='Normal',
-                 add_layer_norm=False, activate_output=False, dropout_structure=None, device=None):
+                 add_layer_norm=False, activate_output=False, dropout_structure=None, device=None, generation_seed=None, normal_std=0.01):
         super().__init__()
 
         assert layer_structure is not None, "layer_structure must not be None"
@@ -76,12 +76,13 @@ class HypernetworkModule(torch.nn.Module):
             self.fix_old_state_dict(state_dict)
             self.load_state_dict(state_dict)
         else:
-            #torch.manual_seed(42) # fix seed.
+            if generation_seed is not None:
+                torch.manual_seed(generation_seed)
             for layer in self.linear:
                 if type(layer) == torch.nn.Linear or type(layer) == torch.nn.LayerNorm:
                     w, b = layer.weight.data, layer.bias.data
                     if weight_init == "Normal" or type(layer) == torch.nn.LayerNorm:
-                        normal_(w, mean=0.0, std=0.01)
+                        normal_(w, mean=0.0, std=normal_std)
                         normal_(b, mean=0.0, std=0)
                     elif weight_init == 'XavierUniform':
                         xavier_uniform_(w)
@@ -164,15 +165,17 @@ class Hypernetwork:
         self.optimizer_state_dict = None
         self.dropout_structure = kwargs['dropout_structure'] if 'dropout_structure' in kwargs and use_dropout else None
         self.optional_info = kwargs.get('optional_info', None)
+        generation_seed = kwargs.get('generation_seed', None)
+        normal_std = kwargs.get('normal_std', 0.01)
         if self.dropout_structure is None:
             self.dropout_structure = parse_dropout_structure(self.layer_structure, self.use_dropout, self.last_layer_dropout)
 
         for size in enable_sizes or []:
             self.layers[size] = (
                 HypernetworkModule(size, None, self.layer_structure, self.activation_func, self.weight_init,
-                                   self.add_layer_norm, self.activate_output, dropout_structure=self.dropout_structure),
+                                   self.add_layer_norm, self.activate_output, dropout_structure=self.dropout_structure, generation_seed=generation_seed, normal_std=normal_std),
                 HypernetworkModule(size, None, self.layer_structure, self.activation_func, self.weight_init,
-                                   self.add_layer_norm, self.activate_output, dropout_structure=self.dropout_structure),
+                                   self.add_layer_norm, self.activate_output, dropout_structure=self.dropout_structure, generation_seed=generation_seed, normal_std=normal_std),
             )
         self.eval()
 

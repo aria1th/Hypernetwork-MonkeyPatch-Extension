@@ -118,6 +118,15 @@ def create_extension_tab(params=None):
                                                              label="Select Layer weights initialization. Recommended: Kaiming for relu-like, Xavier for sigmoid-like, Normal otherwise",
                                                              choices=["Normal", "KaimingUniform", "KaimingNormal",
                                                                       "XavierUniform", "XavierNormal"])
+        show_additional_options = gr.Checkbox(
+            label='Show advanced options')
+        with gr.Row(visible=False) as weight_options:
+            generation_seed = gr.Number(label='Weight initialization seed, set -1 for default', value=-1, precision=0)
+            normal_std = gr.Textbox(label="Standard Deviation for Normal weight initialization", placeholder="must be positive float", value="0.01")
+        show_additional_options.change(
+            fn=lambda show: gr_show(show),
+            inputs=[show_additional_options],
+            outputs=[weight_options],)
         new_hypernetwork_add_layer_norm = gr.Checkbox(label="Add layer normalization")
         new_hypernetwork_use_dropout = gr.Checkbox(
             label="Use dropout. Might improve training when dataset is small / limited.")
@@ -147,7 +156,9 @@ def create_extension_tab(params=None):
                 new_hypernetwork_add_layer_norm,
                 new_hypernetwork_use_dropout,
                 new_hypernetwork_dropout_structure,
-                optional_info
+                optional_info,
+                generation_seed if generation_seed.visible else None,
+                normal_std if normal_std.visible else 0.01
             ],
             outputs=[
                 new_hypernetwork_name,
