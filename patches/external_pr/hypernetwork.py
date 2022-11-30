@@ -144,8 +144,13 @@ def train_hypernetwork(hypernetwork_name, learn_rate, batch_size, gradient_step,
         except RuntimeError as e:
             print("Cannot resume from saved optimizer!")
             print(e)
-    scheduler_beta = CosineAnnealingWarmUpRestarts(optimizer=optimizer, first_cycle_steps=beta_repeat_epoch, cycle_mult=epoch_mult, max_lr=scheduler.learn_rate, warmup_steps=warmup, min_lr=min_lr, gamma=gamma_rate)
-    scheduler_beta.last_epoch =hypernetwork.step-1
+    if use_beta_scheduler:
+        scheduler_beta = CosineAnnealingWarmUpRestarts(optimizer=optimizer, first_cycle_steps=beta_repeat_epoch, cycle_mult=epoch_mult, max_lr=scheduler.learn_rate, warmup_steps=warmup, min_lr=min_lr, gamma=gamma_rate)
+        scheduler_beta.last_epoch =hypernetwork.step-1
+    else:
+        scheduler_beta = None
+        for pg in optimizer.param_groups:
+            pg['lr'] = scheduler.learn_rate
     scaler = torch.cuda.amp.GradScaler()
 
     batch_size = ds.batch_size
