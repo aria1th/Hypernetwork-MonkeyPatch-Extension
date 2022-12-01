@@ -123,7 +123,7 @@ class HypernetworkModule(torch.nn.Module):
 
     def forward(self, x, multiplier=None):
         if multiplier is None or not isinstance(multiplier, (int, float)):
-            return x + self.linear(x) * (shared.opts.sd_hypernetwork_strength if not self.training else 1)
+            return x + self.linear(x) * (HypernetworkModule.multiplier if not self.training else 1)
         return x + self.linear(x) * multiplier
 
     def trainables(self, train=False):
