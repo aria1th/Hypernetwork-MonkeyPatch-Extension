@@ -215,8 +215,16 @@ class SingularForward(Forward):
         self.processor = processor
         self.strength = strength
         # parse. We expect parsing Singletons or (k,v) pair here, which is HN Name and Strength.
-        available_opts[self.processor] = Hypernetwork()
-        available_opts[self.processor].load(find_non_hash_key(self.processor))
+        hn = Hypernetwork()
+        try:
+            hn.load(find_non_hash_key(self.processor))
+        except:
+            global lazy_load
+            lazy_load = True
+            print("Encountered CUDA Memory Error, will unload HNs, speed might go down severely!")
+            available_opts[self.processor] = hn
+            hn.load(find_non_hash_key(self.processor))
+
         # assert self.processor in available_opts, f"Hypernetwork named {processor} is not ready!"
         assert 0 <= self.strength <= 1, "Strength must be between 0 and 1!"
         print(f"SingularForward <{self.name}, {self.strength}>")
@@ -251,7 +259,7 @@ class ParallelForward(Forward):
             self.callers[keys] = Forward.parse(keys)
             self.weights[keys] = sequence[keys] / sum(sequence.values())
         print(str(self))
-        
+
     def __call__(self, context, context_v=None, layer=None):
         ctx_k, ctx_v = torch.zeros_like(context, device=context.device), torch.zeros_like(context,
                                                                                           device=context.device)
