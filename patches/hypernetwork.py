@@ -11,6 +11,8 @@ from statistics import stdev, mean
 import torch
 import tqdm
 from torch.nn.init import normal_, xavier_uniform_, zeros_, xavier_normal_, kaiming_uniform_, kaiming_normal_
+
+import scripts.xy_grid
 from .scheduler import CosineAnnealingWarmUpRestarts
 
 import modules.hypernetworks.hypernetwork
@@ -634,9 +636,13 @@ Last saved image: {html.escape(last_saved_image)}<br/>
 def apply_strength(value=None):
     HypernetworkModule.multiplier = value if value is not None else shared.opts.sd_hypernetwork_strength
 
+def apply_hypernetwork_strength(p, x, xs):
+    apply_strength(x)
+
 modules.hypernetworks.hypernetwork.list_hypernetworks = list_hypernetworks
 modules.hypernetworks.hypernetwork.load_hypernetwork = load_hypernetwork
 modules.hypernetworks.hypernetwork.apply_hypernetwork = apply_hypernetwork
 modules.hypernetworks.hypernetwork.apply_strength = apply_strength
 modules.hypernetworks.hypernetwork.Hypernetwork = Hypernetwork
 modules.hypernetworks.hypernetwork.HypernetworkModule = HypernetworkModule
+scripts.xy_grid.apply_hypernetwork_strength = apply_hypernetwork_strength
