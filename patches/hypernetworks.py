@@ -209,15 +209,17 @@ def find_non_hash_key(target):
 class SingularForward(Forward):
 
     def __init__(self, processor, strength):
+        assert processor != 'defaultForward', "Cannot use name defaultForward!"
+        super(SingularForward, self).__init__()
         self.name = processor
         self.processor = processor
         self.strength = strength
-        super(SingularForward, self).__init__()
         # parse. We expect parsing Singletons or (k,v) pair here, which is HN Name and Strength.
         available_opts[self.processor] = Hypernetwork()
         available_opts[self.processor].load(find_non_hash_key(self.processor))
         # assert self.processor in available_opts, f"Hypernetwork named {processor} is not ready!"
         assert 0 <= self.strength <= 1, "Strength must be between 0 and 1!"
+        print(f"SingularForward <{self.name}, {self.strength}>")
 
     def __call__(self, context_k, context_v=None, layer=None):
         if self.processor in available_opts:
