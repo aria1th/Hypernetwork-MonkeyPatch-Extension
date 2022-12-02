@@ -38,3 +38,8 @@ Thus, hypernetwork created with variable dropout rate might not work correctly i
 ![image](https://user-images.githubusercontent.com/35677394/204087530-b7938e7e-ebe5-4326-b5cd-25480645a11b.png)
 
 This also fixes some CUDA memory issues. Currently both Beta and Gamma Training is working very well, as far as I could say.
+
+
+
+### Planned features
+Allow using general models with .safetensor save /loading
