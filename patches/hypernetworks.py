@@ -222,9 +222,8 @@ class SingularForward(Forward):
             global lazy_load
             lazy_load = True
             print("Encountered CUDA Memory Error, will unload HNs, speed might go down severely!")
-            available_opts[self.processor] = hn
             hn.load(find_non_hash_key(self.processor))
-
+        available_opts[self.processor] = hn
         # assert self.processor in available_opts, f"Hypernetwork named {processor} is not ready!"
         assert 0 <= self.strength <= 1, "Strength must be between 0 and 1!"
         print(f"SingularForward <{self.name}, {self.strength}>")
