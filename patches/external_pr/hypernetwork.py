@@ -43,7 +43,7 @@ def train_hypernetwork(hypernetwork_name, learn_rate, batch_size, gradient_step,
             gamma_rate = float(gamma_rate)
             print(f"Using learn rate decay(per cycle) of {gamma_rate}")
             assert 0 <= gamma_rate <= 1, f"Cannot use gamma rate with {gamma_rate}!"
-            epoch_mult = int(float(epoch_mult))
+            epoch_mult = float(epoch_mult)
             assert 1 <= epoch_mult, "Cannot use epoch multiplier smaller than 1!"
             warmup = int(warmup)
             assert warmup >= 1, "Warmup epoch should be larger than 0!"
