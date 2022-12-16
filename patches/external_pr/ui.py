@@ -38,7 +38,7 @@ Hypernetwork saved to {html.escape(filename)}
 def on_train_gamma_tab(params=None):
     with gr.Tab(label="Train_Gamma") as train_gamma:
         gr.HTML(
-            value="<p style='margin-bottom: 0.7em'>Train an embedding or Hypernetwork; you must specify a directory with a set of 1:1 ratio images <a href=\"https://github.com/AUTOMATIC1111/stable-diffusion-webui/wiki/Textual-Inversion\" style=\"font-weight:bold;\">[wiki]</a></p>")
+            value="<p style='margin-bottom: 0.7em'>Train an embedding or Hypernetwork; you must specify a directory <a href=\"https://github.com/AUTOMATIC1111/stable-diffusion-webui/wiki/Textual-Inversion\" style=\"font-weight:bold;\">[wiki]</a></p>")
         with gr.Row():
             train_embedding_name = gr.Dropdown(label='Embedding', elem_id="train_embedding", choices=sorted(
                 sd_hijack.model_hijack.embedding_db.word_embeddings.keys()))
@@ -59,6 +59,13 @@ def on_train_gamma_tab(params=None):
                                                  placeholder="Hypernetwork Learning rate", value="0.00004")
             use_beta_scheduler_checkbox = gr.Checkbox(
                 label='Show advanced learn rate scheduler options(for Hypernetworks)')
+            use_beta_adamW_checkbox = gr.Checkbox(
+                label='Show advanced adamW parameter options(for Hypernetworks)')
+        with gr.Row(visible=False) as adamW_options:
+            adamw_weight_decay = gr.Textbox(label="AdamW weight decay parameter", placeholder="default = 0.01", value="0.01")
+            adamw_beta_1 = gr.Textbox(label="AdamW beta1 parameter", placeholder="default = 0.9", value="0.9")
+            adamw_beta_2 = gr.Textbox(label="AdamW beta2 parameter", placeholder="default = 0.99", value="0.99")
+            adamw_eps = gr.Textbox(label="AdamW epsilon parameter", placeholder="default = 1e-8", value="1e-8")
         with gr.Row(visible=False) as beta_scheduler_options:
             use_beta_scheduler = gr.Checkbox(label='Uses CosineAnnealingWarmupRestarts Scheduler')
             beta_repeat_epoch = gr.Textbox(label='Steps for cycle', placeholder="Cycles every nth Step", value="64")
@@ -72,6 +79,13 @@ def on_train_gamma_tab(params=None):
         with gr.Row(visible=False) as beta_scheduler_options2:
             save_converge_opt = gr.Checkbox(label="Saves when every cycle finishes")
             generate_converge_opt = gr.Checkbox(label="Generates image when every cycle finishes")
+
+        #change by feedback
+        use_beta_adamW_checkbox.change(
+            fn=lambda show: gr_show(show),
+            inputs=[use_beta_adamW_checkbox],
+            outputs=[adamW_options],
+        )
         use_beta_scheduler_checkbox.change(
             fn=lambda show: gr_show(show),
             inputs=[use_beta_scheduler_checkbox],
@@ -175,7 +189,12 @@ def on_train_gamma_tab(params=None):
             gamma_rate,
             save_converge_opt,
             generate_converge_opt,
-            move_optim_when_generate
+            move_optim_when_generate,
+            use_beta_adamW_checkbox,
+            adamw_weight_decay,
+            adamw_beta_1,
+            adamw_beta_2,
+            adamw_eps
         ],
         outputs=[
             ti_output,

@@ -30,10 +30,27 @@ def train_hypernetwork(hypernetwork_name, learn_rate, batch_size, gradient_step,
                        preview_negative_prompt, preview_steps, preview_sampler_index, preview_cfg_scale, preview_seed,
                        preview_width, preview_height,
                        use_beta_scheduler=False, beta_repeat_epoch=4000, epoch_mult=1,warmup =10, min_lr=1e-7, gamma_rate=1, save_when_converge=False, create_when_converge=False,
-                       move_optimizer=True):
+                       move_optimizer=True,
+                       use_adamw_parameter=False, adamw_weight_decay=0.01, adamw_beta_1=0.9, adamw_beta_2=0.99,adamw_eps=1e-8):
     # images allows training previews to have infotext. Importing it at the top causes a circular import problem.
     from modules import images
+
     try:
+        if use_adamw_parameter:
+            adamw_weight_decay, adamw_beta_1, adamw_beta_2, adamw_eps = [float(x) for x in [adamw_weight_decay, adamw_beta_1, adamw_beta_2, adamw_eps]]
+            assert (all(0 <= x <= 1 for x in [adamw_weight_decay, adamw_beta_1, adamw_beta_2, adamw_eps])), "Cannot use negative or >1 number for adamW parameters!"
+            adamW_kwarg_dict = {
+                'weight_decay' : adamw_weight_decay,
+                'betas' : (adamw_beta_1, adamw_beta_2),
+                'eps' : adamw_eps
+            }
+            print('Using custom AdamW parameters')
+        else:
+            adamW_kwarg_dict = {
+                'weight_decay' : 0.01,
+                'betas' : (0.9, 0.99),
+                'eps' : 1e-8
+            }
         if use_beta_scheduler:
             print("Using Beta Scheduler")
             beta_repeat_epoch = int(beta_repeat_epoch)
@@ -130,11 +147,16 @@ def train_hypernetwork(hypernetwork_name, learn_rate, batch_size, gradient_step,
 
     # Here we use optimizer from saved HN, or we can specify as UI option.
     if hypernetwork.optimizer_name in optimizer_dict:
-        optimizer = optimizer_dict[hypernetwork.optimizer_name](params=weights, lr=scheduler.learn_rate)
+        if use_adamw_parameter:
+            if hypernetwork.optimizer_name != 'AdamW':
+                raise RuntimeError(f"Cannot use adamW paramters for optimizer {hypernetwork.optimizer_name}!")
+            optimizer = torch.optim.AdamW(params=weights, lr=scheduler.learn_rate, **adamW_kwarg_dict)
+        else:
+            optimizer = optimizer_dict[hypernetwork.optimizer_name](params=weights, lr=scheduler.learn_rate)
         optimizer_name = hypernetwork.optimizer_name
     else:
         print(f"Optimizer type {hypernetwork.optimizer_name} is not defined!")
-        optimizer = torch.optim.AdamW(params=weights, lr=scheduler.learn_rate)
+        optimizer = torch.optim.AdamW(params=weights, lr=scheduler.learn_rate, **adamW_kwarg_dict)
         optimizer_name = 'AdamW'
 
     if hypernetwork.optimizer_state_dict:  # This line must be changed if Optimizer type can be different from saved optimizer.
