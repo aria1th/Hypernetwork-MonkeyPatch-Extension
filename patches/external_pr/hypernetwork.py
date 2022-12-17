@@ -38,7 +38,8 @@ def train_hypernetwork(hypernetwork_name, learn_rate, batch_size, gradient_step,
     try:
         if use_adamw_parameter:
             adamw_weight_decay, adamw_beta_1, adamw_beta_2, adamw_eps = [float(x) for x in [adamw_weight_decay, adamw_beta_1, adamw_beta_2, adamw_eps]]
-            assert (all(0 <= x <= 1 for x in [adamw_weight_decay, adamw_beta_1, adamw_beta_2, adamw_eps])), "Cannot use negative or >1 number for adamW parameters!"
+            assert 0 <= adamw_weight_decay, "Weight decay paramter should be larger or equal than zero!"
+            assert (all(0 <= x <= 1 for x in [adamw_beta_1, adamw_beta_2, adamw_eps])), "Cannot use negative or >1 number for adamW parameters!"
             adamW_kwarg_dict = {
                 'weight_decay' : adamw_weight_decay,
                 'betas' : (adamw_beta_1, adamw_beta_2),
