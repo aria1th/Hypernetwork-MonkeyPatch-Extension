@@ -31,7 +31,8 @@ def train_hypernetwork(hypernetwork_name, learn_rate, batch_size, gradient_step,
                        preview_width, preview_height,
                        use_beta_scheduler=False, beta_repeat_epoch=4000, epoch_mult=1,warmup =10, min_lr=1e-7, gamma_rate=1, save_when_converge=False, create_when_converge=False,
                        move_optimizer=True,
-                       use_adamw_parameter=False, adamw_weight_decay=0.01, adamw_beta_1=0.9, adamw_beta_2=0.99,adamw_eps=1e-8):
+                       use_adamw_parameter=False, adamw_weight_decay=0.01, adamw_beta_1=0.9, adamw_beta_2=0.99,adamw_eps=1e-8,
+                    use_grad_opts=False, gradient_clip_opt='None', optional_gradient_clip_value=1e01, optional_gradient_norm_type=2):
     # images allows training previews to have infotext. Importing it at the top causes a circular import problem.
     from modules import images
 
@@ -77,6 +78,29 @@ def train_hypernetwork(hypernetwork_name, learn_rate, batch_size, gradient_step,
             create_when_converge = False
     except ValueError:
         raise RuntimeError("Cannot use advanced LR scheduler settings!")
+    if use_grad_opts and gradient_clip_opt != "None":
+        try:
+            optional_gradient_clip_value = float(optional_gradient_clip_value)
+        except ValueError:
+            raise RuntimeError(f"Cannot convert invalid gradient clipping value {optional_gradient_clip_value})")
+        if gradient_clip_opt == "Norm":
+            try:
+                grad_norm = int(optional_gradient_norm_type)
+            except ValueError:
+                raise RuntimeError(f"Cannot convert invalid gradient norm type {optional_gradient_norm_type})")
+            assert grad_norm >= 0, f"P-norm cannot be calculated from negative number {grad_norm}"
+            print(f"Using gradient clipping by Norm, norm type {optional_gradient_norm_type}, norm limit {optional_gradient_clip_value}")
+            def gradient_clipping(arg1):
+                torch.nn.utils.clip_grad_norm_(arg1, optional_gradient_clip_value, optional_gradient_norm_type)
+                return
+        else:
+            print(f"Using gradient clipping by Value, limit {optional_gradient_clip_value}")
+            def gradient_clipping(arg1):
+                torch.nn.utils.clip_grad_value_(arg1, optional_gradient_clip_value)
+                return
+    else:
+        def gradient_clipping(arg1):
+            return
     save_hypernetwork_every = save_hypernetwork_every or 0
     create_image_every = create_image_every or 0
     validate_train_inputs(hypernetwork_name, learn_rate, batch_size, gradient_step, data_root,
@@ -235,10 +259,10 @@ def train_hypernetwork(hypernetwork_name, learn_rate, batch_size, gradient_step,
                     _loss_step += loss.item()
                     scaler.scale(loss).backward()
                     batch.latent_sample.to(devices.cpu)
-                    del loss
                 # go back until we reach gradient accumulation steps
                 if (j + 1) % gradient_step != 0:
                     continue
+                gradient_clipping(weights)
                 # print(f"grad:{weights[0].grad.detach().cpu().abs().mean().item():.7f}")
                 # scaler.unscale_(optimizer)
                 # print(f"grad:{weights[0].grad.detach().cpu().abs().mean().item():.15f}")

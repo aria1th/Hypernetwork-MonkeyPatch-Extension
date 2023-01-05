@@ -61,6 +61,8 @@ def on_train_gamma_tab(params=None):
                 label='Show advanced learn rate scheduler options(for Hypernetworks)')
             use_beta_adamW_checkbox = gr.Checkbox(
                 label='Show advanced adamW parameter options(for Hypernetworks)')
+            show_gradient_clip_checkbox = gr.Checkbox(
+                label='Show Gradient Clipping Options(for both)')
         with gr.Row(visible=False) as adamW_options:
             adamw_weight_decay = gr.Textbox(label="AdamW weight decay parameter", placeholder="default = 0.01", value="0.01")
             adamw_beta_1 = gr.Textbox(label="AdamW beta1 parameter", placeholder="default = 0.9", value="0.9")
@@ -79,7 +81,10 @@ def on_train_gamma_tab(params=None):
         with gr.Row(visible=False) as beta_scheduler_options2:
             save_converge_opt = gr.Checkbox(label="Saves when every cycle finishes")
             generate_converge_opt = gr.Checkbox(label="Generates image when every cycle finishes")
-
+        with gr.Row(visible=False) as gradient_clip_options:
+            gradient_clip_opt = gr.Radio(label="Gradient Clipping Options", choices=["None", "limit", "norm"])
+            optional_gradient_clip_value = gr.Textbox(label="Limiting value", value="1e-1")
+            optional_gradient_norm_type = gr.Textbox(label="Norm type", value="2")
         #change by feedback
         use_beta_adamW_checkbox.change(
             fn=lambda show: gr_show(show),
@@ -95,6 +100,11 @@ def on_train_gamma_tab(params=None):
             fn=lambda show: gr_show(show),
             inputs=[use_beta_scheduler_checkbox],
             outputs=[beta_scheduler_options2],
+        )
+        show_gradient_clip_checkbox.change(
+            fn=lambda show: gr_show(show),
+            inputs=[show_gradient_clip_checkbox],
+            outputs=[gradient_clip_options],
         )
         move_optim_when_generate = gr.Checkbox(label="Unload Optimizer when generating preview(hypernetwork)", value=True)
         batch_size = gr.Number(label='Batch size', value=1, precision=0)
@@ -153,6 +163,10 @@ def on_train_gamma_tab(params=None):
             save_image_with_stored_embedding,
             preview_from_txt2img,
             *params.txt2img_preview_params,
+            show_gradient_clip_checkbox,
+            gradient_clip_opt,
+            optional_gradient_clip_value,
+            optional_gradient_norm_type
         ],
         outputs=[
             ti_output,
@@ -194,7 +208,12 @@ def on_train_gamma_tab(params=None):
             adamw_weight_decay,
             adamw_beta_1,
             adamw_beta_2,
-            adamw_eps
+            adamw_eps,
+            show_gradient_clip_checkbox,
+            gradient_clip_opt,
+            optional_gradient_clip_value,
+            optional_gradient_norm_type
+
         ],
         outputs=[
             ti_output,

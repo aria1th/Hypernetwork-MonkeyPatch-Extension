@@ -84,12 +84,36 @@ def train_embedding(embedding_name, learn_rate, batch_size, gradient_step, data_
                     training_height, steps, shuffle_tags, tag_drop_out, latent_sampling_method, create_image_every,
                     save_embedding_every, template_file, save_image_with_stored_embedding, preview_from_txt2img,
                     preview_prompt, preview_negative_prompt, preview_steps, preview_sampler_index, preview_cfg_scale,
-                    preview_seed, preview_width, preview_height):
+                    preview_seed, preview_width, preview_height,
+                    use_grad_opts, gradient_clip_opt, optional_gradient_clip_value, optional_gradient_norm_type
+                    ):
     save_embedding_every = save_embedding_every or 0
     create_image_every = create_image_every or 0
     validate_train_inputs(embedding_name, learn_rate, batch_size, gradient_step, data_root, template_file, steps,
                           save_embedding_every, create_image_every, log_directory, name="embedding")
 
+    if use_grad_opts and gradient_clip_opt != "None":
+        try:
+            optional_gradient_clip_value = float(optional_gradient_clip_value)
+        except ValueError:
+            raise RuntimeError(f"Cannot convert invalid gradient clipping value {optional_gradient_clip_value})")
+        if gradient_clip_opt == "Norm":
+            try:
+                grad_norm = int(optional_gradient_norm_type)
+            except ValueError:
+                raise RuntimeError(f"Cannot convert invalid gradient norm type {optional_gradient_norm_type})")
+            assert grad_norm >= 0, f"P-norm cannot be calculated from negative number {grad_norm}"
+            def gradient_clipping(arg1):
+                torch.nn.utils.clip_grad_norm_(arg1, optional_gradient_clip_value, optional_gradient_norm_type)
+                return
+        else:
+            def gradient_clipping(arg1):
+                torch.nn.utils.clip_grad_value_(arg1, optional_gradient_clip_value)
+                return
+    else:
+        def gradient_clipping(arg1):
+            return
+    # Function gradient clipping is inplace(_) operation.
     shared.state.textinfo = "Initializing textual inversion training..."
     shared.state.job_count = steps
 
@@ -126,7 +150,6 @@ def train_embedding(embedding_name, learn_rate, batch_size, gradient_step, data_
         shared.state.textinfo = f"Model has already been trained beyond specified max steps"
         return embedding, filename
     scheduler = LearnRateScheduler(learn_rate, steps, initial_step)
-
     # dataset loading may take a while, so input validations and early returns should be done before this
     shared.state.textinfo = f"Preparing dataset from {html.escape(data_root)}..."
 
@@ -151,7 +174,20 @@ def train_embedding(embedding_name, learn_rate, batch_size, gradient_step, data_
         shared.sd_model.first_stage_model.to(devices.cpu)
 
     embedding.vec.requires_grad = True
-    optimizer = torch.optim.AdamW([embedding.vec], lr=scheduler.learn_rate)
+    optimizer = torch.optim.AdamW([embedding.vec], lr=scheduler.learn_rate, weight_decay=0.0)
+    if shared.opts.save_optimizer_state:
+        optimizer_state_dict = None
+        if os.path.exists(filename + '.optim'):
+            optimizer_saved_dict = torch.load(filename + '.optim', map_location='cpu')
+            if embedding.checksum() == optimizer_saved_dict.get('hash', None):
+                optimizer_state_dict = optimizer_saved_dict.get('optimizer_state_dict', None)
+
+        if optimizer_state_dict is not None:
+            optimizer.load_state_dict(optimizer_state_dict)
+            print("Loaded existing optimizer from checkpoint")
+        else:
+            print("No saved optimizer exists in checkpoint")
+
     scaler = torch.cuda.amp.GradScaler()
 
     batch_size = ds.batch_size
@@ -166,6 +202,9 @@ def train_embedding(embedding_name, learn_rate, batch_size, gradient_step, data_
     last_saved_image = "<none>"
     forced_filename = "<none>"
     embedding_yet_to_be_embedded = False
+
+    is_training_inpainting_model = shared.sd_model.model.conditioning_key in {'hybrid', 'concat'}
+    img_c = None
 
     pbar = tqdm.tqdm(total=steps - initial_step)
     try:
@@ -191,7 +230,14 @@ def train_embedding(embedding_name, learn_rate, batch_size, gradient_step, data_
                     # c[:, 1:1+embedding.vec.shape[0]] = embedding.vec.to(devices.device, non_blocking=pin_memory)
                     x = batch.latent_sample.to(devices.device, non_blocking=pin_memory)
                     c = shared.sd_model.cond_stage_model(batch.cond_text)
-                    loss = shared.sd_model(x, c)[0] / gradient_step
+                    if is_training_inpainting_model:
+                        if img_c is None:
+                            img_c = processing.txt2img_image_conditioning(shared.sd_model, c, training_width, training_height)
+
+                        cond = {"c_concat": [img_c], "c_crossattn": [c]}
+                    else:
+                        cond = c
+                    loss = shared.sd_model(x, cond)[0] / gradient_step
                     del x
 
                     _loss_step += loss.item()
@@ -200,6 +246,7 @@ def train_embedding(embedding_name, learn_rate, batch_size, gradient_step, data_
                 # go back until we reach gradient accumulation steps
                 if (j + 1) % gradient_step != 0:
                     continue
+                gradient_clipping(embedding.vec)
                 scaler.step(optimizer)
                 scaler.update()
                 embedding.step += 1
@@ -220,7 +267,7 @@ def train_embedding(embedding_name, learn_rate, batch_size, gradient_step, data_
                     last_saved_file = os.path.join(embedding_dir, f'{embedding_name_every}.pt')
                     # if shared.opts.save_optimizer_state:
                     # embedding.optimizer_state_dict = optimizer.state_dict()
-                    save_embedding(embedding, checkpoint, embedding_name_every, last_saved_file,
+                    save_embedding(embedding, optimizer, checkpoint, embedding_name_every, last_saved_file,
                                    remove_cached_checksum=True)
                     embedding_yet_to_be_embedded = True
 
@@ -320,7 +367,7 @@ Last saved image: {html.escape(last_saved_image)}<br/>
 </p>
 """
         filename = os.path.join(shared.cmd_opts.embeddings_dir, f'{embedding_name}.pt')
-        save_embedding(embedding, checkpoint, embedding_name, filename, remove_cached_checksum=True)
+        save_embedding(embedding, optimizer, checkpoint, embedding_name, filename, remove_cached_checksum=True)
     except Exception:
         print(traceback.format_exc(), file=sys.stderr)
         pass
