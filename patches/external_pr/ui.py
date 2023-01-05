@@ -67,11 +67,11 @@ def on_train_gamma_tab(params=None):
             adamw_beta_2 = gr.Textbox(label="AdamW beta2 parameter", placeholder="default = 0.99", value="0.99")
             adamw_eps = gr.Textbox(label="AdamW epsilon parameter", placeholder="default = 1e-8", value="1e-8")
         with gr.Row(visible=False) as beta_scheduler_options:
-            use_beta_scheduler = gr.Checkbox(label='Uses CosineAnnealingWarmupRestarts Scheduler')
+            use_beta_scheduler = gr.Checkbox(label='Use CosineAnnealingWarmupRestarts Scheduler')
             beta_repeat_epoch = gr.Textbox(label='Steps for cycle', placeholder="Cycles every nth Step", value="64")
             epoch_mult = gr.Textbox(label='Step multiplier per cycle', placeholder="Step length multiplier every cycle", value="1")
             warmup = gr.Textbox(label='Warmup step per cycle', placeholder="CosineAnnealing lr increase step", value="5")
-            min_lr = gr.Textbox(label='Minimum learning rate for beta scheduler',
+            min_lr = gr.Textbox(label='Minimum learning rate',
                                 placeholder="restricts decay value, but does not restrict gamma rate decay",
                                 value="6e-7")
             gamma_rate = gr.Textbox(label='Decays learning rate every cycle',
