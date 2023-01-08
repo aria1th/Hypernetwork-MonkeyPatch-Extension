@@ -32,6 +32,7 @@ Beta hypernetworks* can contain additional informations and specified dropout st
 This extension also overrides how webui loads and finds hypernetworks, to use variable dropout rates, and etc.
 Thus, hypernetwork created with variable dropout rate might not work correctly in original webui.
 
+Well, at least now it should work, without having any problem except you cannot use variable dropout rate in original webui. If you have problem with loading hypernetworks, please create an issue. I can submit pr to original branch to load these beta typed hypernetworks correctly.
 
 ### Training features are in train_gamma tab.
 ![image](https://user-images.githubusercontent.com/35677394/204087550-94b8e7fb-70cb-4157-96bc-e022340901c9.png)
