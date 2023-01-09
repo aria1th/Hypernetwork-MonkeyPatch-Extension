@@ -279,6 +279,10 @@ def train_embedding(embedding_name, learn_rate, batch_size, gradient_step, data_
                 if images_dir is not None and steps_done % create_image_every == 0:
                     forced_filename = f'{embedding_name}-{steps_done}'
                     last_saved_image = os.path.join(images_dir, forced_filename)
+                    rng_state = torch.get_rng_state()
+                    cuda_rng_state = None
+                    if torch.cuda.is_available():
+                        cuda_rng_state = torch.cuda.get_rng_state_all()
 
                     shared.sd_model.first_stage_model.to(devices.device)
 
@@ -311,7 +315,9 @@ def train_embedding(embedding_name, learn_rate, batch_size, gradient_step, data_
 
                     if unload:
                         shared.sd_model.first_stage_model.to(devices.cpu)
-
+                    torch.set_rng_state(rng_state)
+                    if torch.cuda.is_available():
+                        torch.cuda.set_rng_state_all(cuda_rng_state)
                     if image is not None:
                         shared.state.current_image = image
                         last_saved_image, last_text_info = images.save_image(image, images_dir, "", p.seed, p.prompt,
