@@ -1,5 +1,6 @@
 import csv
 import datetime
+import gc
 import html
 import os
 import sys
@@ -10,6 +11,9 @@ import tqdm
 from PIL import PngImagePlugin
 
 from .dataset import PersonalizedBase, PersonalizedDataLoader
+from ..scheduler import CosineAnnealingWarmUpRestarts
+from ..hnutil import optim_to
+
 from modules import shared, devices, sd_models, images, processing, sd_samplers, sd_hijack
 from modules.textual_inversion.image_embedding import caption_image_overlay, insert_image_data_embed, embedding_to_b64
 from modules.textual_inversion.learn_schedule import LearnRateScheduler
@@ -85,13 +89,57 @@ def train_embedding(embedding_name, learn_rate, batch_size, gradient_step, data_
                     save_embedding_every, template_file, save_image_with_stored_embedding, preview_from_txt2img,
                     preview_prompt, preview_negative_prompt, preview_steps, preview_sampler_index, preview_cfg_scale,
                     preview_seed, preview_width, preview_height,
-                    use_grad_opts, gradient_clip_opt, optional_gradient_clip_value, optional_gradient_norm_type
+                    use_beta_scheduler=False, beta_repeat_epoch=4000, epoch_mult=1,warmup =10, min_lr=1e-7, gamma_rate=1, save_when_converge=False, create_when_converge=False,
+                    move_optimizer=True,
+                    use_adamw_parameter=False, adamw_weight_decay=0.01, adamw_beta_1=0.9, adamw_beta_2=0.99,adamw_eps=1e-8,
+                    use_grad_opts=False, gradient_clip_opt='None', optional_gradient_clip_value=1e01, optional_gradient_norm_type=2
                     ):
     save_embedding_every = save_embedding_every or 0
     create_image_every = create_image_every or 0
     validate_train_inputs(embedding_name, learn_rate, batch_size, gradient_step, data_root, template_file, steps,
                           save_embedding_every, create_image_every, log_directory, name="embedding")
-
+    try:
+        if use_adamw_parameter:
+            adamw_weight_decay, adamw_beta_1, adamw_beta_2, adamw_eps = [float(x) for x in [adamw_weight_decay, adamw_beta_1, adamw_beta_2, adamw_eps]]
+            assert 0 <= adamw_weight_decay, "Weight decay paramter should be larger or equal than zero!"
+            assert (all(0 <= x <= 1 for x in [adamw_beta_1, adamw_beta_2, adamw_eps])), "Cannot use negative or >1 number for adamW parameters!"
+            adamW_kwarg_dict = {
+                'weight_decay' : adamw_weight_decay,
+                'betas' : (adamw_beta_1, adamw_beta_2),
+                'eps' : adamw_eps
+            }
+            print('Using custom AdamW parameters')
+        else:
+            adamW_kwarg_dict = {
+                'weight_decay' : 0.01,
+                'betas' : (0.9, 0.99),
+                'eps' : 1e-8
+            }
+        if use_beta_scheduler:
+            print("Using Beta Scheduler")
+            beta_repeat_epoch = int(beta_repeat_epoch)
+            assert beta_repeat_epoch > 0, f"Cannot use too small cycle {beta_repeat_epoch}!"
+            min_lr = float(min_lr)
+            assert min_lr < 1, f"Cannot use minimum lr with {min_lr}!"
+            gamma_rate = float(gamma_rate)
+            print(f"Using learn rate decay(per cycle) of {gamma_rate}")
+            assert 0 <= gamma_rate <= 1, f"Cannot use gamma rate with {gamma_rate}!"
+            epoch_mult = float(epoch_mult)
+            assert 1 <= epoch_mult, "Cannot use epoch multiplier smaller than 1!"
+            warmup = int(warmup)
+            assert warmup >= 1, "Warmup epoch should be larger than 0!"
+            print(f"Save when converges : {save_when_converge}")
+            print(f"Generate image when converges : {create_when_converge}")
+        else:
+            beta_repeat_epoch = 4000
+            epoch_mult=1
+            warmup=10
+            min_lr=1e-7
+            gamma_rate=1
+            save_when_converge = False
+            create_when_converge = False
+    except ValueError:
+        raise RuntimeError("Cannot use advanced LR scheduler settings!")
     if use_grad_opts and gradient_clip_opt != "None":
         try:
             optional_gradient_clip_value = float(optional_gradient_clip_value)
@@ -122,19 +170,19 @@ def train_embedding(embedding_name, learn_rate, batch_size, gradient_step, data_
     log_directory = os.path.join(log_directory, datetime.datetime.now().strftime("%Y-%m-%d"), embedding_name)
     unload = shared.opts.unload_models_when_training
 
-    if save_embedding_every > 0:
+    if save_embedding_every > 0 or save_when_converge:
         embedding_dir = os.path.join(log_directory, "embeddings")
         os.makedirs(embedding_dir, exist_ok=True)
     else:
         embedding_dir = None
 
-    if create_image_every > 0:
+    if create_image_every > 0 or create_when_converge:
         images_dir = os.path.join(log_directory, "images")
         os.makedirs(images_dir, exist_ok=True)
     else:
         images_dir = None
 
-    if create_image_every > 0 and save_image_with_stored_embedding:
+    if (create_image_every > 0 or create_when_converge) and save_image_with_stored_embedding:
         images_embeds_dir = os.path.join(log_directory, "image_embeddings")
         os.makedirs(images_embeds_dir, exist_ok=True)
     else:
@@ -154,7 +202,8 @@ def train_embedding(embedding_name, learn_rate, batch_size, gradient_step, data_
     shared.state.textinfo = f"Preparing dataset from {html.escape(data_root)}..."
 
     pin_memory = shared.opts.pin_memory
-
+    shared.sd_model.cond_stage_model.to(devices.device)
+    shared.sd_model.first_stage_model.to(devices.device)
     ds = PersonalizedBase(data_root=data_root, width=training_width,
                                                             height=training_height,
                                                             repeats=shared.opts.training_image_repeats_per_epoch,
@@ -174,19 +223,32 @@ def train_embedding(embedding_name, learn_rate, batch_size, gradient_step, data_
         shared.sd_model.first_stage_model.to(devices.cpu)
 
     embedding.vec.requires_grad = True
-    optimizer = torch.optim.AdamW([embedding.vec], lr=scheduler.learn_rate, weight_decay=0.0)
-    if shared.opts.save_optimizer_state:
-        optimizer_state_dict = None
-        if os.path.exists(filename + '.optim'):
+    optimizer_name = 'AdamW' # hardcoded optimizer name now
+    if use_adamw_parameter:
+        optimizer = torch.optim.AdamW(params=[embedding.vec], lr=scheduler.learn_rate, **adamW_kwarg_dict)
+    else:
+        optimizer = torch.optim.AdamW([embedding.vec], lr=scheduler.learn_rate, weight_decay=0.0)
+
+    if os.path.exists(filename + '.optim'):  # This line must be changed if Optimizer type can be different from saved optimizer.
+        try:
             optimizer_saved_dict = torch.load(filename + '.optim', map_location='cpu')
             if embedding.checksum() == optimizer_saved_dict.get('hash', None):
                 optimizer_state_dict = optimizer_saved_dict.get('optimizer_state_dict', None)
-
-        if optimizer_state_dict is not None:
-            optimizer.load_state_dict(optimizer_state_dict)
-            print("Loaded existing optimizer from checkpoint")
-        else:
-            print("No saved optimizer exists in checkpoint")
+                optimizer.load_state_dict(optimizer_state_dict)
+                print("Loaded existing optimizer from checkpoint")
+        except RuntimeError as e:
+            print("Cannot resume from saved optimizer!")
+            print(e)
+    else:
+        print("No saved optimizer exists in checkpoint")
+        optim_to(optimizer, devices.device)
+    if use_beta_scheduler:
+        scheduler_beta = CosineAnnealingWarmUpRestarts(optimizer=optimizer, first_cycle_steps=beta_repeat_epoch, cycle_mult=epoch_mult, max_lr=scheduler.learn_rate, warmup_steps=warmup, min_lr=min_lr, gamma=gamma_rate)
+        scheduler_beta.last_epoch = embedding.step-1
+    else:
+        scheduler_beta = None
+        for pg in optimizer.param_groups:
+            pg['lr'] = scheduler.learn_rate
 
     scaler = torch.cuda.amp.GradScaler()
 
@@ -217,7 +279,10 @@ def train_embedding(embedding_name, learn_rate, batch_size, gradient_step, data_
                 # works as a drop_last=True for gradient accumulation
                 if j == max_steps_per_epoch:
                     break
-                scheduler.apply(optimizer, embedding.step)
+                if use_beta_scheduler:
+                    scheduler_beta.step(embedding.step)
+                else:
+                    scheduler.apply(optimizer, embedding.step)
                 if scheduler.finished:
                     break
                 if shared.state.interrupted:
@@ -261,7 +326,7 @@ def train_embedding(embedding_name, learn_rate, batch_size, gradient_step, data_
                 epoch_step = embedding.step % steps_per_epoch
 
                 pbar.set_description(f"[Epoch {epoch_num}: {epoch_step + 1}/{steps_per_epoch}]loss: {loss_step:.7f}")
-                if embedding_dir is not None and steps_done % save_embedding_every == 0:
+                if embedding_dir is not None and ((use_beta_scheduler and scheduler_beta.is_EOC(embedding.step) and save_when_converge) or (save_embedding_every > 0 and steps_done % save_embedding_every == 0)):
                     # Before saving, change name to match current checkpoint.
                     embedding_name_every = f'{embedding_name}-{steps_done}'
                     last_saved_file = os.path.join(embedding_dir, f'{embedding_name_every}.pt')
@@ -276,14 +341,16 @@ def train_embedding(embedding_name, learn_rate, batch_size, gradient_step, data_
                     "learn_rate": scheduler.learn_rate
                 })
 
-                if images_dir is not None and steps_done % create_image_every == 0:
+                if images_dir is not None and ((use_beta_scheduler and scheduler_beta.is_EOC(embedding.step) and create_when_converge) or (create_image_every > 0 and steps_done % create_image_every == 0)):
                     forced_filename = f'{embedding_name}-{steps_done}'
                     last_saved_image = os.path.join(images_dir, forced_filename)
                     rng_state = torch.get_rng_state()
                     cuda_rng_state = None
                     if torch.cuda.is_available():
                         cuda_rng_state = torch.cuda.get_rng_state_all()
-
+                    if move_optimizer:
+                        optim_to(optimizer, devices.cpu)
+                        gc.collect()
                     shared.sd_model.first_stage_model.to(devices.device)
 
                     p = processing.StableDiffusionProcessingTxt2Img(
@@ -318,6 +385,8 @@ def train_embedding(embedding_name, learn_rate, batch_size, gradient_step, data_
                     torch.set_rng_state(rng_state)
                     if torch.cuda.is_available():
                         torch.cuda.set_rng_state_all(cuda_rng_state)
+                    if move_optimizer:
+                        optim_to(optimizer, devices.device)
                     if image is not None:
                         shared.state.current_image = image
                         last_saved_image, last_text_info = images.save_image(image, images_dir, "", p.seed, p.prompt,

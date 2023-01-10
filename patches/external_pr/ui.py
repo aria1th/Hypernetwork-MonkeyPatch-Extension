@@ -58,9 +58,9 @@ def on_train_gamma_tab(params=None):
             hypernetwork_learn_rate = gr.Textbox(label='Hypernetwork Learning rate',
                                                  placeholder="Hypernetwork Learning rate", value="0.00004")
             use_beta_scheduler_checkbox = gr.Checkbox(
-                label='Show advanced learn rate scheduler options(for Hypernetworks)')
+                label='Show advanced learn rate scheduler options')
             use_beta_adamW_checkbox = gr.Checkbox(
-                label='Show advanced adamW parameter options(for Hypernetworks)')
+                label='Show advanced adamW parameter options)')
             show_gradient_clip_checkbox = gr.Checkbox(
                 label='Show Gradient Clipping Options(for both)')
         with gr.Row(visible=False) as adamW_options:
@@ -163,6 +163,20 @@ def on_train_gamma_tab(params=None):
             save_image_with_stored_embedding,
             preview_from_txt2img,
             *params.txt2img_preview_params,
+            use_beta_scheduler,
+            beta_repeat_epoch,
+            epoch_mult,
+            warmup,
+            min_lr,
+            gamma_rate,
+            save_converge_opt,
+            generate_converge_opt,
+            move_optim_when_generate,
+            use_beta_adamW_checkbox,
+            adamw_weight_decay,
+            adamw_beta_1,
+            adamw_beta_2,
+            adamw_eps,
             show_gradient_clip_checkbox,
             gradient_clip_opt,
             optional_gradient_clip_value,
