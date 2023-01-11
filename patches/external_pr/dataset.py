@@ -70,14 +70,15 @@ class PersonalizedBase(Dataset):
         assert os.path.isdir(data_root), "Dataset directory doesn't exist"
         assert os.listdir(data_root), "Dataset directory is empty"
 
-        self.image_paths = [os.path.join(data_root, file_path) for file_path in os.listdir(data_root)] * batch_size # We assert batch size > 1 can work, by having multiple same-size images
+        self.image_paths = [os.path.join(data_root, file_path) for file_path in os.listdir(data_root)] # We assert batch size > 1 can work, by having multiple same-size images
         # But note that we can't stack tensors with other size. so its not working now.
         self.shuffle_tags = shuffle_tags
         self.tag_drop_out = tag_drop_out
         groups = defaultdict(list)
 
         print("Preparing dataset...")
-        for _i, path in enumerate(tqdm.tqdm(self.image_paths)):
+        _i = 0
+        for path in tqdm.tqdm(self.image_paths):
             if shared.state.interrupted:
                 raise Exception("inturrupted")
             try: # apply variable size here
@@ -136,6 +137,7 @@ class PersonalizedBase(Dataset):
                 with torch.autocast("cuda"):
                     entry.cond = cond_model([entry.cond_text]).to(devices.cpu).squeeze(0)
             groups[image.size].append(_i)  #record indexes of images in dataset into group. When we pull batch, try using single group to make torch.stack work.
+            _i += 1
             self.dataset.append(entry)
             del torchdata
             del latent_dist
@@ -172,7 +174,6 @@ class PersonalizedBase(Dataset):
 class GroupedBatchSampler(Sampler):
     # See https://github.com/AUTOMATIC1111/stable-diffusion-webui/pull/6620
     def __init__(self, data_source: PersonalizedBase, batch_size: int):
-        super().__init__(data_source)  # does not do anything.
         n = len(data_source)
         self.groups = data_source.groups
         self.len = n_batch = n // batch_size
