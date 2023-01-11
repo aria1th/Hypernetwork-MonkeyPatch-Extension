@@ -1,15 +1,19 @@
 # source:https://github.com/AUTOMATIC1111/stable-diffusion-webui/pull/4886/files
 
 import os
+import sys
+
 import numpy as np
 import PIL
 import torch
 from PIL import Image
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import Dataset, DataLoader, Sampler
 from torchvision import transforms
 
 from ..hnutil import get_closest
 import random
+from collections import defaultdict
+from random import Random
 import tqdm
 from modules import devices, shared
 import re
@@ -17,6 +21,15 @@ import re
 from ldm.modules.distributions.distributions import DiagonalGaussianDistribution
 
 re_numbers_at_start = re.compile(r"^[-\d]+\s*")
+
+random_state_manager = Random(None)
+shuffle = random_state_manager.shuffle
+choice = random_state_manager.choice
+choices = random_state_manager.choices
+
+
+def set_rng(seed=None):
+    random_state_manager.seed(seed)
 
 
 class DatasetEntry:
@@ -37,7 +50,9 @@ class PersonalizedBase(Dataset):
                  shuffle_tags=False, tag_drop_out=0, latent_sampling_method='once'):
         re_word = re.compile(shared.opts.dataset_filename_word_regex) if len(
             shared.opts.dataset_filename_word_regex) > 0 else None
-
+        seed = random.randrange(sys.maxsize)
+        set_rng(seed) # reset forked RNG state when we create dataset.
+        print(f"Dataset seed was set to f{seed}")
         self.placeholder_token = placeholder_token
 
         self.width = width
@@ -59,9 +74,10 @@ class PersonalizedBase(Dataset):
         # But note that we can't stack tensors with other size. so its not working now.
         self.shuffle_tags = shuffle_tags
         self.tag_drop_out = tag_drop_out
+        groups = defaultdict(list)
 
         print("Preparing dataset...")
-        for path in tqdm.tqdm(self.image_paths):
+        for _i, path in enumerate(tqdm.tqdm(self.image_paths)):
             if shared.state.interrupted:
                 raise Exception("inturrupted")
             try: # apply variable size here
@@ -119,12 +135,12 @@ class PersonalizedBase(Dataset):
             if include_cond and not (self.tag_drop_out != 0 or self.shuffle_tags):
                 with torch.autocast("cuda"):
                     entry.cond = cond_model([entry.cond_text]).to(devices.cpu).squeeze(0)
-
+            groups[image.size].append(_i)  #record indexes of images in dataset into group. When we pull batch, try using single group to make torch.stack work.
             self.dataset.append(entry)
             del torchdata
             del latent_dist
             del latent_sample
-
+        self.groups = list(groups.values())
         self.length = len(self.dataset)
         assert self.length > 0, "No images have been found in the dataset."
         self.batch_size = min(batch_size, self.length)
@@ -132,13 +148,13 @@ class PersonalizedBase(Dataset):
         self.latent_sampling_method = latent_sampling_method
 
     def create_text(self, filename_text):
-        text = random.choice(self.lines)
+        text = choice(self.lines)
         text = text.replace("[name]", self.placeholder_token)
         tags = filename_text.split(',')
         if self.tag_drop_out != 0:
             tags = [t for t in tags if random.random() > self.tag_drop_out]
         if self.shuffle_tags:
-            random.shuffle(tags)
+            shuffle(tags)
         text = text.replace("[filewords]", ','.join(tags))
         return text
 
@@ -153,11 +169,37 @@ class PersonalizedBase(Dataset):
             entry.latent_sample = shared.sd_model.get_first_stage_encoding(entry.latent_dist).to(devices.cpu)
         return entry
 
+class GroupedBatchSampler(Sampler):
+    # See https://github.com/AUTOMATIC1111/stable-diffusion-webui/pull/6620
+    def __init__(self, data_source: PersonalizedBase, batch_size: int):
+        super().__init__(data_source)  # does not do anything.
+        n = len(data_source)
+        self.groups = data_source.groups
+        self.len = n_batch = n // batch_size
+        expected = [len(g) / n * n_batch * batch_size for g in data_source.groups]
+        self.base = [int(e) // batch_size for e in expected]
+        self.n_rand_batches = n_batch - sum(self.base)
+        self.probs = [e % batch_size/self.n_rand_batches/batch_size if self.n_rand_batches > 0 else 0 for e in expected]
+        self.batch_size = batch_size
+
+    def __len__(self):
+        return self.len
+
+    def __iter__(self):
+        b = self.batch_size
+        batches = []
+        for g in self.groups:
+            shuffle(g)
+            batches.extend(g[i*b:(i+1)*b] for i in range(len(g) // b))
+        for _ in range(self.n_rand_batches):
+            rand_group = choices(self.groups, self.probs)[0]
+            batches.append(choices(rand_group, k=b))
+        shuffle(batches)
+        yield from batches
 
 class PersonalizedDataLoader(DataLoader):
     def __init__(self, dataset, latent_sampling_method="once", batch_size=1, pin_memory=False):
-        super(PersonalizedDataLoader, self).__init__(dataset, shuffle=True, drop_last=True, batch_size=batch_size,
-                                                     pin_memory=pin_memory)
+        super(PersonalizedDataLoader, self).__init__(dataset, batch_sampler=GroupedBatchSampler(dataset, batch_size), pin_memory=pin_memory)
         if latent_sampling_method == "random":
             self.collate_fn = collate_wrapper_random
         else:
