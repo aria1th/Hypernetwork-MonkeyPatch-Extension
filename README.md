@@ -49,3 +49,8 @@ This also fixes some CUDA memory issues. Currently both Beta and Gamma Training 
 
 ### Planned features
 Allow using general models with .safetensor save /loading
+
+
+### Some personal researches
+
+We cannot apply convolution for attention, it does do something, but hypernetwork here, only affects attention, and its different from 'attention map' which is already a decoded form(image BW vectors) of attention(latent space). Same goes to SENet, unfortunately.
