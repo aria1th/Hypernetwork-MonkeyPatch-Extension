@@ -7,6 +7,7 @@ import gradio as gr
 
 from modules.paths import script_path
 from modules.ui import create_refresh_button, gr_show
+import patches.clip_hijack as clip_hijack
 import patches.textual_inversion as textual_inversion
 import patches.ui as ui
 import patches.shared as shared_patch
@@ -168,10 +169,28 @@ def create_extension_tab(params=None):
         )
     return [(create_beta, "Create_beta", "create_beta")]
 
+
+def create_extension_tab2(params=None):
+    with gr.Blocks(analytics_enabled=False) as CLIP_test_interface:
+        with gr.Tab(label="CLIP-test") as clip_test:
+            with gr.Row():
+                clipTextModelPath = gr.Textbox("openai/clip-vit-large-patch14", label="CLIP Text models. Set to empty to not change.")
+                # see https://huggingface.co/openai/clip-vit-large-patch14 and related pages to find model.
+                change_model = gr.Checkbox(label="Enable clip model change. This will be triggered from next model changes.")
+                change_model.change(
+                    fn=clip_hijack.trigger_sd_hijack,
+                    inputs=[
+                        clipTextModelPath if change_model and clipTextModelPath != '' else 'openai/clip-vit-large-patch14'
+                    ],
+                    outputs=[]
+                )
+    return [(CLIP_test_interface, "CLIP_test", "clip_test")]
+
+
 #script_callbacks.on_ui_train_tabs(create_training_tab)   # Deprecate Beta Training
 script_callbacks.on_ui_train_tabs(create_extension_tab)
 script_callbacks.on_ui_train_tabs(external_patch_ui.on_train_gamma_tab)
-
+script_callbacks.on_ui_tabs(create_extension_tab2)
 class Script(scripts.Script):
     def title(self):
         return "Hypernetwork Monkey Patch"
