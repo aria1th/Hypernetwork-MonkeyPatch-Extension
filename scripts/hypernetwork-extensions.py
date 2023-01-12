@@ -180,7 +180,8 @@ def create_extension_tab2(params=None):
                 change_model.change(
                     fn=clip_hijack.trigger_sd_hijack,
                     inputs=[
-                        clipTextModelPath if change_model and clipTextModelPath != '' else 'openai/clip-vit-large-patch14'
+                        change_model,
+                        clipTextModelPath
                     ],
                     outputs=[]
                 )
