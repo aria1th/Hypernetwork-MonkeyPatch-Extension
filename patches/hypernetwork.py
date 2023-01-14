@@ -14,7 +14,12 @@ from torch.nn.init import normal_, xavier_uniform_, zeros_, xavier_normal_, kaim
 
 import scripts.xy_grid
 from modules.shared import opts
-from modules import hashes
+try:
+    from modules import hashes
+except ImportError or ModuleNotFoundError:
+    print("modules.hashes is not found, will use backup module from extension!")
+    import hashes_backup as hashes
+
 from .scheduler import CosineAnnealingWarmUpRestarts
 
 import modules.hypernetworks.hypernetwork
@@ -24,6 +29,7 @@ from modules.hypernetworks.hypernetwork import report_statistics, save_hypernetw
 from modules.textual_inversion import textual_inversion
 from .dataset import PersonalizedBase
 from modules.textual_inversion.learn_schedule import LearnRateScheduler
+
 
 
 class HypernetworkModule(torch.nn.Module):
