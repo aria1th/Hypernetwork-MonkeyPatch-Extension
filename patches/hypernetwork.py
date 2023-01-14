@@ -14,6 +14,7 @@ from torch.nn.init import normal_, xavier_uniform_, zeros_, xavier_normal_, kaim
 
 import scripts.xy_grid
 from modules.shared import opts
+from modules import hashes
 from .scheduler import CosineAnnealingWarmUpRestarts
 
 import modules.hypernetworks.hypernetwork
@@ -105,6 +106,7 @@ class HypernetworkModule(torch.nn.Module):
             self.to(devices.device)
         else:
             self.to(device)
+
 
     def fix_old_state_dict(self, state_dict):
         changes = {
@@ -205,6 +207,10 @@ class Hypernetwork:
             for layer in layers:
                 layer.requires_grad_(False)
 
+    def shorthash(self):
+        sha256 = hashes.sha256(self.filename, f'hypernet/{self.name}')
+        return sha256[0:10]
+
     def save(self, filename):
         state_dict = {}
         optimizer_saved_dict = {}
@@ -231,7 +237,7 @@ class Hypernetwork:
 
         torch.save(state_dict, filename)
         if shared.opts.save_optimizer_state and self.optimizer_state_dict:
-            optimizer_saved_dict['hash'] = sd_models.model_hash(filename)
+            optimizer_saved_dict['hash'] = self.shorthash()
             optimizer_saved_dict['optimizer_state_dict'] = self.optimizer_state_dict
             torch.save(optimizer_saved_dict, filename + '.optim')
 
@@ -246,30 +252,30 @@ class Hypernetwork:
         print(self.layer_structure)
         optional_info = state_dict.get('optional_info', None)
         if optional_info is not None:
-            print(f"INFO:\n {optional_info}\n")
             self.optional_info = optional_info
         self.activation_func = state_dict.get('activation_func', None)
-        print(f"Activation function is {self.activation_func}")
         self.weight_init = state_dict.get('weight_initialization', 'Normal')
-        print(f"Weight initialization is {self.weight_init}")
         self.add_layer_norm = state_dict.get('is_layer_norm', False)
-        print(f"Layer norm is set to {self.add_layer_norm}")
         self.dropout_structure = state_dict.get('dropout_structure', None)
         self.use_dropout = True if self.dropout_structure is not None and any(self.dropout_structure) else state_dict.get('use_dropout', False)
-        print(f"Dropout usage is set to {self.use_dropout}" )
         self.activate_output = state_dict.get('activate_output', True)
-        print(f"Activate last layer is set to {self.activate_output}")
         self.last_layer_dropout = state_dict.get('last_layer_dropout', False)  # Silent fix for HNs before 4918eb6
         # Dropout structure should have same length as layer structure, Every digits should be in [0,1), and last digit must be 0.
         if self.dropout_structure is None:
-            print("Using previous dropout structure")
             self.dropout_structure = parse_dropout_structure(self.layer_structure, self.use_dropout, self.last_layer_dropout)
-        print(f"Dropout structure is set to {self.dropout_structure}")
-
+        if shared.opts.print_hypernet_extra:
+            if optional_info is not None:
+                print(f"INFO:\n {optional_info}\n")
+            print(f"Activation function is {self.activation_func}")
+            print(f"Weight initialization is {self.weight_init}")
+            print(f"Layer norm is set to {self.add_layer_norm}")
+            print(f"Dropout usage is set to {self.use_dropout}")
+            print(f"Activate last layer is set to {self.activate_output}")
+            print(f"Dropout structure is set to {self.dropout_structure}")
         optimizer_saved_dict = torch.load(self.filename + '.optim', map_location = 'cpu') if os.path.exists(self.filename + '.optim') else {}
         self.optimizer_name = "AdamW"
 
-        if sd_models.model_hash(filename) == optimizer_saved_dict.get('hash', None):
+        if optimizer_saved_dict.get('hash', None) == self.shorthash() or optimizer_saved_dict.get('hash', None) == sd_models.model_hash(filename):
             self.optimizer_state_dict = optimizer_saved_dict.get('optimizer_state_dict', None)
         else:
             self.optimizer_state_dict = None

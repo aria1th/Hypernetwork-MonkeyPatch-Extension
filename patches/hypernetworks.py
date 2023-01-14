@@ -195,6 +195,8 @@ class Forward:
         else:
             raise ValueError(f"Cannot parse non-list sequence {sequence}!")
 
+    def shorthash(self):
+        return '0000000000'
 
 from .hypernetwork import Hypernetwork
 

@@ -414,7 +414,7 @@ def train_embedding(embedding_name, learn_rate, batch_size, gradient_step, data_
 
                         checkpoint = sd_models.select_checkpoint()
                         footer_left = checkpoint.model_name
-                        footer_mid = '[{}]'.format(checkpoint.hash)
+                        footer_mid = '[{}]'.format(checkpoint.shorthash)
                         footer_right = '{}v {}s'.format(vectorSize, steps_done)
 
                         captioned_image = caption_image_overlay(image, title, footer_left, footer_mid, footer_right)
