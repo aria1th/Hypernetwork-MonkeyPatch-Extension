@@ -1,12 +1,16 @@
 import html
+import json
 import os
+import random
 
 from modules import shared, sd_hijack, devices
+from modules.call_queue import wrap_gradio_call
+from modules.hypernetworks.ui import keys
 from modules.paths import script_path
 from modules.ui import create_refresh_button, gr_show
 from webui import wrap_gradio_gpu_call
 from .textual_inversion import train_embedding as train_embedding_external
-from .hypernetwork import train_hypernetwork as train_hypernetwork_external
+from .hypernetwork import train_hypernetwork as train_hypernetwork_external, train_hypernetwork_tuning
 import gradio as gr
 
 
@@ -34,6 +38,51 @@ Hypernetwork saved to {html.escape(filename)}
         shared.sd_model.first_stage_model.to(devices.device)
         sd_hijack.apply_optimizations()
 
+
+def train_hypernetwork_ui_tuning(*args):
+
+    initial_hypernetwork = shared.loaded_hypernetwork
+
+    assert not shared.cmd_opts.lowvram, 'Training models with lowvram is not possible'
+
+    try:
+        sd_hijack.undo_optimizations()
+
+        hypernetwork, filename = train_hypernetwork_tuning(*args)
+
+        res = f"""
+Training {'interrupted' if shared.state.interrupted else 'finished'} at {hypernetwork.step} steps.
+Hypernetwork saved to {html.escape(filename)}
+"""
+        return res, ""
+    except Exception:
+        raise
+    finally:
+        shared.loaded_hypernetwork = initial_hypernetwork
+        shared.sd_model.cond_stage_model.to(devices.device)
+        shared.sd_model.first_stage_model.to(devices.device)
+        sd_hijack.apply_optimizations()
+
+
+def save_training_setting(*args):
+    save_file_name, hypernetwork_learn_rate, batch_size, gradient_step, training_width, \
+    training_height, steps, shuffle_tags, tag_drop_out, latent_sampling_method, \
+    template_file, use_beta_scheduler, beta_repeat_epoch, epoch_mult, warmup, min_lr, \
+    gamma_rate, use_beta_adamW_checkbox, save_converge_opt, generate_converge_opt, \
+    adamw_weight_decay, adamw_beta_1, adamw_beta_2, adamw_eps, show_gradient_clip_checkbox, \
+    gradient_clip_opt, optional_gradient_clip_value, optional_gradient_norm_type = args
+
+    filename = (str(random.randint(0, 1024)) if save_file_name == '' else save_file_name) + '_train_' + '.json'
+    with open(filename, 'w') as file:
+        json.dump(locals(), file)
+        print(f"File saved as {filename}")
+
+def save_hypernetwork_setting(*args):
+    save_file_name, enable_sizes, overwrite_old, layer_structure, activation_func, weight_init, add_layer_norm, use_dropout, dropout_structure, optional_info, weight_init_seed, normal_std = args
+    filename = (str(random.randint(0, 1024)) if save_file_name == '' else save_file_name) + '_hypernetwork_' + '.json'
+    with open(filename, 'w') as file:
+        json.dump(locals(), file)
+        print(f"File saved as {filename}")
 
 def on_train_gamma_tab(params=None):
     dummy_component = gr.Label(visible=False)
@@ -140,8 +189,45 @@ def on_train_gamma_tab(params=None):
             train_embedding = gr.Button(value="Train Embedding", variant='primary')
         ti_output = gr.Text(elem_id="ti_output3", value="", show_label=False)
         ti_outcome = gr.HTML(elem_id="ti_error3", value="")
+    save_training_option = gr.Button(label="Save training setting")
+    save_file_name = gr.Textbox(label="File name to save setting as", value="")
+    load_training_option = gr.Textbox(label="Load training option from saved json file. This will override settings above", value="")
+    #Full path to .json or simple names are recommended.
+    save_training_option.click(
+        fn = wrap_gradio_call(save_training_setting),
+        inputs=[
+            save_file_name,
+            hypernetwork_learn_rate,
+            batch_size,
+            gradient_step,
+            training_width,
+            training_height,
+            steps,
+            shuffle_tags,
+            tag_drop_out,
+            latent_sampling_method,
+            template_file,
+            use_beta_scheduler,
+            beta_repeat_epoch,
+            epoch_mult,
+            warmup,
+            min_lr,
+            gamma_rate,
+            use_beta_adamW_checkbox,
+            save_converge_opt,
+            generate_converge_opt,
+            adamw_weight_decay,
+            adamw_beta_1,
+            adamw_beta_2,
+            adamw_eps,
+            show_gradient_clip_checkbox,
+            gradient_clip_opt,
+            optional_gradient_clip_value,
+            optional_gradient_norm_type],
+        outputs=[
 
-
+        ]
+    )
     train_embedding.click(
         fn=wrap_gradio_gpu_call(train_embedding_external, extra_outputs=[gr.update()]),
         _js="start_training_textual_inversion",
@@ -229,7 +315,8 @@ def on_train_gamma_tab(params=None):
             show_gradient_clip_checkbox,
             gradient_clip_opt,
             optional_gradient_clip_value,
-            optional_gradient_norm_type
+            optional_gradient_norm_type,
+            load_training_option
 
         ],
         outputs=[
@@ -244,3 +331,64 @@ def on_train_gamma_tab(params=None):
         outputs=[],
     )
     return [(train_gamma, "Train Gamma", "train_gamma")]
+
+def on_train_tuning(params=None):
+    dummy_component = gr.Label(visible=False)
+    with gr.Tab(label="Train_Tuning") as train_tuning:
+        gr.HTML(
+            value="<p style='margin-bottom: 0.7em'>Train Hypernetwork; you must specify a directory <a href=\"https://github.com/AUTOMATIC1111/stable-diffusion-webui/wiki/Textual-Inversion\" style=\"font-weight:bold;\">[wiki]</a></p>")
+        with gr.Row():
+            train_hypernetwork_name = gr.Dropdown(label='Hypernetwork', elem_id="train_hypernetwork",
+                                                  choices=[x for x in shared.hypernetworks.keys()])
+            create_refresh_button(train_hypernetwork_name, shared.reload_hypernetworks,
+                                  lambda: {"choices": sorted([x for x in shared.hypernetworks.keys()])},
+                                  "refresh_train_hypernetwork_name")
+            optional_new_hypernetwork_name = gr.Textbox(label="Hypernetwork name to create, leave it empty to use selected", value="")
+            load_hypernetworks_option = gr.Textbox(
+                label="Load Hypernetwork creation option from saved json file. filename cannot have ',' inside, and files should be splitted by ','.", value="")
+            load_training_options = gr.Textbox(
+                label="Load training option(s) from saved json file. filename cannot have ',' inside, and files should be splitted by ','.", value="")
+        move_optim_when_generate = gr.Checkbox(label="Unload Optimizer when generating preview(hypernetwork)", value=True)
+        dataset_directory = gr.Textbox(label='Dataset directory', placeholder="Path to directory with input images")
+        log_directory = gr.Textbox(label='Log directory', placeholder="Path to directory where to write outputs",
+                                   value="textual_inversion")
+        create_image_every = gr.Number(label='Save an image to log directory every N steps, 0 to disable',
+                                       value=500, precision=0)
+        save_model_every = gr.Number(
+            label='Save a copy of model to log directory every N steps, 0 to disable', value=500, precision=0)
+        preview_from_txt2img = gr.Checkbox(
+            label='Read parameters (prompt, etc...) from txt2img tab when making previews', value=False)
+        with gr.Row():
+            interrupt_training = gr.Button(value="Interrupt")
+            train_hypernetwork = gr.Button(value="Train Hypernetwork", variant='primary')
+        ti_output = gr.Text(elem_id="ti_output4", value="", show_label=False)
+        ti_outcome = gr.HTML(elem_id="ti_error4", value="")
+    train_hypernetwork.click(
+        fn=wrap_gradio_gpu_call(train_hypernetwork_ui_tuning, extra_outputs=[gr.update()]),
+        _js="start_training_textual_inversion",
+        inputs=[
+            dummy_component,
+            train_hypernetwork_name,
+            dataset_directory,
+            log_directory,
+            create_image_every,
+            save_model_every,
+            preview_from_txt2img,
+            *params.txt2img_preview_params,
+            move_optim_when_generate,
+            optional_new_hypernetwork_name,
+            load_hypernetworks_option,
+            load_training_options
+        ],
+        outputs=[
+            ti_output,
+            ti_outcome,
+        ]
+    )
+
+    interrupt_training.click(
+        fn=lambda: shared.state.interrupt(),
+        inputs=[],
+        outputs=[],
+    )
+    return [(train_tuning, "Train Tuning", "train_tuning")]
