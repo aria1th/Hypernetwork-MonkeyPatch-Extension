@@ -939,7 +939,13 @@ def train_hypernetwork_tuning(id_task, hypernetwork_name, data_root, log_directo
     load_training_options = load_training_options.split(',')
     # images allows training previews to have infotext. Importing it at the top causes a circular import problem.
     for load_hypernetworks_option in load_hypernetworks_options:
+        if get_training_option(load_hypernetworks_option) is False:
+            print(f"Cannot load from {load_hypernetworks_option}!")
+            continue
         for load_training_option in load_training_options:
+            if get_training_option(load_training_option) is False:
+                print(f"Cannot load from {load_training_option}!")
+                continue
             internal_clean_training(
                 hypernetwork_name if load_hypernetworks_option == '' else optional_new_hypernetwork_name, data_root,
                 log_directory,
