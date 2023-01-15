@@ -1,5 +1,6 @@
 import os
 
+from modules.call_queue import wrap_gradio_call
 from modules.hypernetworks.ui import keys
 import modules.scripts as scripts
 from modules import script_callbacks, shared, sd_hijack
@@ -108,8 +109,8 @@ def create_training_tab(params: script_callbacks.UiTrainTabParams = None):
 def create_extension_tab(params=None):
     with gr.Tab(label="Create Beta hypernetwork") as create_beta:
         new_hypernetwork_name = gr.Textbox(label="Name")
-        new_hypernetwork_sizes = gr.CheckboxGroup(label="Modules", value=["768", "320", "640", "1280"],
-                                                  choices=["768", "320", "640", "1280"])
+        new_hypernetwork_sizes = gr.CheckboxGroup(label="Modules", value=["768", "320", "640", "1024", "1280"],
+                                                  choices=["768", "320", "640", "1024", "1280"])
         new_hypernetwork_layer_structure = gr.Textbox("1, 2, 1", label="Enter hypernetwork layer structure",
                                                       placeholder="1st and last digit must be 1. ex:'1, 2, 1'")
         new_hypernetwork_activation_func = gr.Dropdown(value="linear",
@@ -143,8 +144,33 @@ def create_extension_tab(params=None):
 
             with gr.Column():
                 create_hypernetwork = gr.Button(value="Create hypernetwork", variant='primary')
-            ti_output = gr.Text(elem_id="ti_output2", value="", show_label=False)
-            ti_outcome = gr.HTML(elem_id="ti_error2", value="")
+        setting_name = gr.Textbox(label="Setting file name", value="")
+        save_setting = gr.Button(value="Save hypernetwork setting to file")
+        ti_output = gr.Text(elem_id="ti_output2", value="", show_label=False)
+        ti_outcome = gr.HTML(elem_id="ti_error2", value="")
+
+
+
+        save_setting.click(
+            fn=wrap_gradio_call(external_patch_ui.save_hypernetwork_setting),
+            inputs=[
+                setting_name,
+                new_hypernetwork_sizes,
+                overwrite_old_hypernetwork,
+                new_hypernetwork_layer_structure,
+                new_hypernetwork_activation_func,
+                new_hypernetwork_initialization_option,
+                new_hypernetwork_add_layer_norm,
+                new_hypernetwork_use_dropout,
+                new_hypernetwork_dropout_structure,
+                optional_info,
+                generation_seed if generation_seed.visible else None,
+                normal_std if normal_std.visible else 0.01],
+            outputs=[
+                ti_output,
+                ti_outcome,
+            ]
+        )
         create_hypernetwork.click(
             fn=ui.create_hypernetwork,
             inputs=[
@@ -195,6 +221,7 @@ def on_ui_settings():
 #script_callbacks.on_ui_train_tabs(create_training_tab)   # Deprecate Beta Training
 script_callbacks.on_ui_train_tabs(create_extension_tab)
 script_callbacks.on_ui_train_tabs(external_patch_ui.on_train_gamma_tab)
+script_callbacks.on_ui_train_tabs(external_patch_ui.on_train_tuning)
 script_callbacks.on_ui_tabs(create_extension_tab2)
 script_callbacks.on_ui_settings(on_ui_settings)
 class Script(scripts.Script):

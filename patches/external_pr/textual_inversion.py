@@ -164,6 +164,7 @@ def train_embedding(id_task, embedding_name, learn_rate, batch_size, gradient_st
         def gradient_clipping(arg1):
             return
     # Function gradient clipping is inplace(_) operation.
+    shared.state.job = "train-embedding"
     shared.state.textinfo = "Initializing textual inversion training..."
     shared.state.job_count = steps
 
@@ -200,6 +201,7 @@ def train_embedding(id_task, embedding_name, learn_rate, batch_size, gradient_st
         shared.state.textinfo = f"Model has already been trained beyond specified max steps"
         return embedding, filename
     scheduler = LearnRateScheduler(learn_rate, steps, initial_step)
+
     # dataset loading may take a while, so input validations and early returns should be done before this
     shared.state.textinfo = f"Preparing dataset from {html.escape(data_root)}..."
     old_parallel_processing_allowed = shared.parallel_processing_allowed
@@ -216,8 +218,6 @@ def train_embedding(id_task, embedding_name, learn_rate, batch_size, gradient_st
         shared.sd_model.cond_stage_model.requires_grad_(False)
         shared.sd_model.first_stage_model.requires_grad_(False)
         torch.cuda.empty_cache()
-    shared.sd_model.cond_stage_model.to(devices.device)
-    shared.sd_model.first_stage_model.to(devices.device)
     ds = PersonalizedBase(data_root=data_root, width=training_width,
                                                             height=training_height,
                                                             repeats=shared.opts.training_image_repeats_per_epoch,
@@ -232,30 +232,31 @@ def train_embedding(id_task, embedding_name, learn_rate, batch_size, gradient_st
 
     dl = PersonalizedDataLoader(ds, latent_sampling_method=latent_sampling_method,
                                                                   batch_size=ds.batch_size, pin_memory=pin_memory)
-
     if unload:
         shared.parallel_processing_allowed = False
         shared.sd_model.first_stage_model.to(devices.cpu)
 
-    embedding.vec.requires_grad = True
+    embedding.vec.requires_grad_(True)
     optimizer_name = 'AdamW' # hardcoded optimizer name now
     if use_adamw_parameter:
         optimizer = torch.optim.AdamW(params=[embedding.vec], lr=scheduler.learn_rate, **adamW_kwarg_dict)
     else:
-        optimizer = torch.optim.AdamW([embedding.vec], lr=scheduler.learn_rate, weight_decay=0.0)
+        optimizer = torch.optim.AdamW(params=[embedding.vec], lr=scheduler.learn_rate, weight_decay=0.0)
 
     if os.path.exists(filename + '.optim'):  # This line must be changed if Optimizer type can be different from saved optimizer.
         try:
             optimizer_saved_dict = torch.load(filename + '.optim', map_location='cpu')
             if embedding.checksum() == optimizer_saved_dict.get('hash', None):
                 optimizer_state_dict = optimizer_saved_dict.get('optimizer_state_dict', None)
-                optimizer.load_state_dict(optimizer_state_dict)
-                print("Loaded existing optimizer from checkpoint")
+                if optimizer_state_dict is not None:
+                    optimizer.load_state_dict(optimizer_state_dict)
+                    print("Loaded existing optimizer from checkpoint")
         except RuntimeError as e:
             print("Cannot resume from saved optimizer!")
             print(e)
     else:
         print("No saved optimizer exists in checkpoint")
+    if move_optimizer:
         optim_to(optimizer, devices.device)
     if use_beta_scheduler:
         scheduler_beta = CosineAnnealingWarmUpRestarts(optimizer=optimizer, first_cycle_steps=beta_repeat_epoch, cycle_mult=epoch_mult, max_lr=scheduler.learn_rate, warmup_steps=warmup, min_lr=min_lr, gamma=gamma_rate)
@@ -303,12 +304,9 @@ def train_embedding(id_task, embedding_name, learn_rate, batch_size, gradient_st
                 if shared.state.interrupted:
                     break
 
-                with torch.autocast("cuda"):
-                    # c = stack_conds(batch.cond).to(devices.device)
-                    # mask = torch.tensor(batch.emb_index).to(devices.device, non_blocking=pin_memory)
-                    # print(mask)
-                    # c[:, 1:1+embedding.vec.shape[0]] = embedding.vec.to(devices.device, non_blocking=pin_memory)
+                with devices.autocast():
                     x = batch.latent_sample.to(devices.device, non_blocking=pin_memory)
+                    shared.sd_model.cond_stage_model.to(devices.device)
                     c = shared.sd_model.cond_stage_model(batch.cond_text)
                     if is_training_inpainting_model:
                         if img_c is None:
@@ -319,15 +317,20 @@ def train_embedding(id_task, embedding_name, learn_rate, batch_size, gradient_st
                         cond = c
                     loss = shared.sd_model(x, cond)[0] / gradient_step
                     del x
-
                     _loss_step += loss.item()
                 scaler.scale(loss).backward()
-
+                for group in optimizer.param_groups:
+                    for param in group["params"]:
+                        if param.grad is None:
+                            print("Found no grad!")
                 # go back until we reach gradient accumulation steps
                 if (j + 1) % gradient_step != 0:
                     continue
                 gradient_clipping(embedding.vec)
-                scaler.step(optimizer)
+                try:
+                    scaler.step(optimizer)
+                except AssertionError:
+                    raise RuntimeError("This error happens because None of the template used embedding's text!")
                 scaler.update()
                 embedding.step += 1
                 pbar.update()
