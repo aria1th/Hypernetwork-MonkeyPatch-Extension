@@ -48,11 +48,10 @@ def train_hypernetwork_ui_tuning(*args):
     try:
         sd_hijack.undo_optimizations()
 
-        hypernetwork, filename = train_hypernetwork_tuning(*args)
+        train_hypernetwork_tuning(*args)
 
         res = f"""
-Training {'interrupted' if shared.state.interrupted else 'finished'} at {hypernetwork.step} steps.
-Hypernetwork saved to {html.escape(filename)}
+Training {'interrupted' if shared.state.interrupted else 'finished'}.
 """
         return res, ""
     except Exception:

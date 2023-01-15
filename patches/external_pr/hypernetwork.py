@@ -949,4 +949,4 @@ def train_hypernetwork_tuning(id_task, hypernetwork_name, data_root, log_directo
                 move_optimizer,
                 load_hypernetworks_option, load_training_option)
             if shared.state.interrupted:
-                return
+                return None, None
