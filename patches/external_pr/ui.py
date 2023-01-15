@@ -65,24 +65,34 @@ Hypernetwork saved to {html.escape(filename)}
 
 
 def save_training_setting(*args):
-    save_file_name, hypernetwork_learn_rate, batch_size, gradient_step, training_width, \
+    save_file_name, learn_rate, batch_size, gradient_step, training_width, \
     training_height, steps, shuffle_tags, tag_drop_out, latent_sampling_method, \
     template_file, use_beta_scheduler, beta_repeat_epoch, epoch_mult, warmup, min_lr, \
-    gamma_rate, use_beta_adamW_checkbox, save_converge_opt, generate_converge_opt, \
+    gamma_rate, use_beta_adamW_checkbox, save_when_converge, create_when_converge, \
     adamw_weight_decay, adamw_beta_1, adamw_beta_2, adamw_eps, show_gradient_clip_checkbox, \
     gradient_clip_opt, optional_gradient_clip_value, optional_gradient_norm_type = args
-
+    dumped_locals = locals()
+    dumped_locals.pop('args')
     filename = (str(random.randint(0, 1024)) if save_file_name == '' else save_file_name) + '_train_' + '.json'
+    filename = os.path.join(shared.cmd_opts.hypernetwork_dir, filename)
     with open(filename, 'w') as file:
-        json.dump(locals(), file)
+        print(dumped_locals)
+        json.dump(dumped_locals, file)
         print(f"File saved as {filename}")
+    return filename, ""
+
 
 def save_hypernetwork_setting(*args):
     save_file_name, enable_sizes, overwrite_old, layer_structure, activation_func, weight_init, add_layer_norm, use_dropout, dropout_structure, optional_info, weight_init_seed, normal_std = args
+    dumped_locals = locals()
+    dumped_locals.pop('args')
     filename = (str(random.randint(0, 1024)) if save_file_name == '' else save_file_name) + '_hypernetwork_' + '.json'
+    filename = os.path.join(shared.cmd_opts.hypernetwork_dir, filename)
     with open(filename, 'w') as file:
-        json.dump(locals(), file)
+        print(dumped_locals)
+        json.dump(dumped_locals, file)
         print(f"File saved as {filename}")
+    return filename, ""
 
 def on_train_gamma_tab(params=None):
     dummy_component = gr.Label(visible=False)
@@ -182,16 +192,17 @@ def on_train_gamma_tab(params=None):
         with gr.Row():
             latent_sampling_method = gr.Radio(label='Choose latent sampling method', value="once",
                                               choices=['once', 'deterministic', 'random'])
-
+        with gr.Row():
+            save_training_option = gr.Button(value="Save training setting")
+            save_file_name = gr.Textbox(label="File name to save setting as", value="")
+            load_training_option = gr.Textbox(label="Load training option from saved json file. This will override settings above", value="")
         with gr.Row():
             interrupt_training = gr.Button(value="Interrupt")
             train_hypernetwork = gr.Button(value="Train Hypernetwork", variant='primary')
             train_embedding = gr.Button(value="Train Embedding", variant='primary')
         ti_output = gr.Text(elem_id="ti_output3", value="", show_label=False)
         ti_outcome = gr.HTML(elem_id="ti_error3", value="")
-    save_training_option = gr.Button(label="Save training setting")
-    save_file_name = gr.Textbox(label="File name to save setting as", value="")
-    load_training_option = gr.Textbox(label="Load training option from saved json file. This will override settings above", value="")
+
     #Full path to .json or simple names are recommended.
     save_training_option.click(
         fn = wrap_gradio_call(save_training_setting),
@@ -225,7 +236,8 @@ def on_train_gamma_tab(params=None):
             optional_gradient_clip_value,
             optional_gradient_norm_type],
         outputs=[
-
+            ti_output,
+            ti_outcome,
         ]
     )
     train_embedding.click(
@@ -344,10 +356,12 @@ def on_train_tuning(params=None):
                                   lambda: {"choices": sorted([x for x in shared.hypernetworks.keys()])},
                                   "refresh_train_hypernetwork_name")
             optional_new_hypernetwork_name = gr.Textbox(label="Hypernetwork name to create, leave it empty to use selected", value="")
+        with gr.Row():
             load_hypernetworks_option = gr.Textbox(
-                label="Load Hypernetwork creation option from saved json file. filename cannot have ',' inside, and files should be splitted by ','.", value="")
+                label="Load Hypernetwork creation option from saved json file", placeholder = ". filename cannot have ',' inside, and files should be splitted by ','.", value="")
+        with gr.Row():
             load_training_options = gr.Textbox(
-                label="Load training option(s) from saved json file. filename cannot have ',' inside, and files should be splitted by ','.", value="")
+                label="Load training option(s) from saved json file", placeholder = ". filename cannot have ',' inside, and files should be splitted by ','.", value="")
         move_optim_when_generate = gr.Checkbox(label="Unload Optimizer when generating preview(hypernetwork)", value=True)
         dataset_directory = gr.Textbox(label='Dataset directory', placeholder="Path to directory with input images")
         log_directory = gr.Textbox(label='Log directory', placeholder="Path to directory where to write outputs",

@@ -144,14 +144,17 @@ def create_extension_tab(params=None):
 
             with gr.Column():
                 create_hypernetwork = gr.Button(value="Create hypernetwork", variant='primary')
-            save_setting = gr.Button(value="Save hypernetwork setting to file")
-            setting_name = gr.Textbox(label="Setting file name", value="")
-            ti_output = gr.Text(elem_id="ti_output2", value="", show_label=False)
-            ti_outcome = gr.HTML(elem_id="ti_error2", value="")
+        setting_name = gr.Textbox(label="Setting file name", value="")
+        save_setting = gr.Button(value="Save hypernetwork setting to file")
+        ti_output = gr.Text(elem_id="ti_output2", value="", show_label=False)
+        ti_outcome = gr.HTML(elem_id="ti_error2", value="")
+
+
 
         save_setting.click(
             fn=wrap_gradio_call(external_patch_ui.save_hypernetwork_setting),
             inputs=[
+                setting_name,
                 new_hypernetwork_sizes,
                 overwrite_old_hypernetwork,
                 new_hypernetwork_layer_structure,
@@ -163,7 +166,10 @@ def create_extension_tab(params=None):
                 optional_info,
                 generation_seed if generation_seed.visible else None,
                 normal_std if normal_std.visible else 0.01],
-            outputs=[]
+            outputs=[
+                ti_output,
+                ti_outcome,
+            ]
         )
         create_hypernetwork.click(
             fn=ui.create_hypernetwork,
@@ -215,6 +221,7 @@ def on_ui_settings():
 #script_callbacks.on_ui_train_tabs(create_training_tab)   # Deprecate Beta Training
 script_callbacks.on_ui_train_tabs(create_extension_tab)
 script_callbacks.on_ui_train_tabs(external_patch_ui.on_train_gamma_tab)
+script_callbacks.on_ui_train_tabs(external_patch_ui.on_train_tuning)
 script_callbacks.on_ui_tabs(create_extension_tab2)
 script_callbacks.on_ui_settings(on_ui_settings)
 class Script(scripts.Script):

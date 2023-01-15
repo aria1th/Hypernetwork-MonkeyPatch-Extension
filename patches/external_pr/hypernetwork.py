@@ -11,7 +11,6 @@ from collections import defaultdict, deque
 import torch
 import tqdm
 
-
 from modules import shared, sd_models, devices, processing, sd_samplers
 from modules.hypernetworks.hypernetwork import optimizer_dict, stack_conds, save_hypernetwork, report_statistics
 from modules.textual_inversion.learn_schedule import LearnRateScheduler
@@ -22,17 +21,22 @@ from . import sd_hijack_checkpoint
 from ..hnutil import optim_to
 from ..ui import create_hypernetwork_load
 from ..scheduler import CosineAnnealingWarmUpRestarts
-from .dataset import PersonalizedBase,PersonalizedDataLoader
+from .dataset import PersonalizedBase, PersonalizedDataLoader
+
 
 def get_training_option(filename):
+    print(filename)
     if os.path.exists(os.path.join(shared.cmd_opts.hypernetwork_dir, filename)):
         filename = os.path.join(shared.cmd_opts.hypernetwork_dir, filename)
     elif os.path.exists(filename):
         filename = filename
+    elif os.path.exists(os.path.join(shared.cmd_opts.hypernetwork_dir, filename + '.json')):
+        filename = os.path.join(shared.cmd_opts.hypernetwork_dir, filename + '.json')
     else:
         return False
     print(f"Loading setting from {filename}!")
-    obj = json.load(filename)
+    with open(filename, 'r') as file:
+        obj = json.load(file)
     return obj
 
 
@@ -41,17 +45,21 @@ def train_hypernetwork(id_task, hypernetwork_name, learn_rate, batch_size, gradi
                        create_image_every, save_hypernetwork_every, template_file, preview_from_txt2img, preview_prompt,
                        preview_negative_prompt, preview_steps, preview_sampler_index, preview_cfg_scale, preview_seed,
                        preview_width, preview_height,
-                       use_beta_scheduler=False, beta_repeat_epoch=4000, epoch_mult=1,warmup =10, min_lr=1e-7, gamma_rate=1, save_when_converge=False, create_when_converge=False,
+                       use_beta_scheduler=False, beta_repeat_epoch=4000, epoch_mult=1, warmup=10, min_lr=1e-7,
+                       gamma_rate=1, save_when_converge=False, create_when_converge=False,
                        move_optimizer=True,
-                       use_adamw_parameter=False, adamw_weight_decay=0.01, adamw_beta_1=0.9, adamw_beta_2=0.99,adamw_eps=1e-8,
-                    use_grad_opts=False, gradient_clip_opt='None', optional_gradient_clip_value=1e01, optional_gradient_norm_type=2,
-                       load_training_options = ''):
+                       use_adamw_parameter=False, adamw_weight_decay=0.01, adamw_beta_1=0.9, adamw_beta_2=0.99,
+                       adamw_eps=1e-8,
+                       use_grad_opts=False, gradient_clip_opt='None', optional_gradient_clip_value=1e01,
+                       optional_gradient_norm_type=2,
+                       load_training_options=''):
     # images allows training previews to have infotext. Importing it at the top causes a circular import problem.
     from modules import images
     if load_training_options != '':
         dump: dict = get_training_option(load_training_options)
         if dump and dump is not None:
-            learn_rate = dump['hypernetwork_learn_rate']
+            print(f"Loading from {load_training_options}")
+            learn_rate = dump['learn_rate']
             batch_size = dump['batch_size']
             gradient_step = dump['gradient_step']
             training_width = dump['training_width']
@@ -75,25 +83,28 @@ def train_hypernetwork(id_task, hypernetwork_name, learn_rate, batch_size, gradi
             adamw_beta_2 = dump['adamw_beta_2']
             adamw_eps = dump['adamw_eps']
             use_grad_opts = dump['show_gradient_clip_checkbox']
-            gradient_clip_opt = dump['gradient_clip_opt']
+            gradient_clip_opt = dump['use_grad_opts']
             optional_gradient_clip_value = dump['optional_gradient_clip_value']
             optional_gradient_norm_type = dump['optional_gradient_norm_type']
     try:
         if use_adamw_parameter:
-            adamw_weight_decay, adamw_beta_1, adamw_beta_2, adamw_eps = [float(x) for x in [adamw_weight_decay, adamw_beta_1, adamw_beta_2, adamw_eps]]
+            adamw_weight_decay, adamw_beta_1, adamw_beta_2, adamw_eps = [float(x) for x in
+                                                                         [adamw_weight_decay, adamw_beta_1,
+                                                                          adamw_beta_2, adamw_eps]]
             assert 0 <= adamw_weight_decay, "Weight decay paramter should be larger or equal than zero!"
-            assert (all(0 <= x <= 1 for x in [adamw_beta_1, adamw_beta_2, adamw_eps])), "Cannot use negative or >1 number for adamW parameters!"
+            assert (all(0 <= x <= 1 for x in [adamw_beta_1, adamw_beta_2,
+                                              adamw_eps])), "Cannot use negative or >1 number for adamW parameters!"
             adamW_kwarg_dict = {
-                'weight_decay' : adamw_weight_decay,
-                'betas' : (adamw_beta_1, adamw_beta_2),
-                'eps' : adamw_eps
+                'weight_decay': adamw_weight_decay,
+                'betas': (adamw_beta_1, adamw_beta_2),
+                'eps': adamw_eps
             }
             print('Using custom AdamW parameters')
         else:
             adamW_kwarg_dict = {
-                'weight_decay' : 0.01,
-                'betas' : (0.9, 0.99),
-                'eps' : 1e-8
+                'weight_decay': 0.01,
+                'betas': (0.9, 0.99),
+                'eps': 1e-8
             }
         if use_beta_scheduler:
             print("Using Beta Scheduler")
@@ -112,10 +123,10 @@ def train_hypernetwork(id_task, hypernetwork_name, learn_rate, batch_size, gradi
             print(f"Generate image when converges : {create_when_converge}")
         else:
             beta_repeat_epoch = 4000
-            epoch_mult=1
-            warmup=10
-            min_lr=1e-7
-            gamma_rate=1
+            epoch_mult = 1
+            warmup = 10
+            min_lr = 1e-7
+            gamma_rate = 1
             save_when_converge = False
             create_when_converge = False
     except ValueError:
@@ -131,12 +142,15 @@ def train_hypernetwork(id_task, hypernetwork_name, learn_rate, batch_size, gradi
             except ValueError:
                 raise RuntimeError(f"Cannot convert invalid gradient norm type {optional_gradient_norm_type})")
             assert grad_norm >= 0, f"P-norm cannot be calculated from negative number {grad_norm}"
-            print(f"Using gradient clipping by Norm, norm type {optional_gradient_norm_type}, norm limit {optional_gradient_clip_value}")
+            print(
+                f"Using gradient clipping by Norm, norm type {optional_gradient_norm_type}, norm limit {optional_gradient_clip_value}")
+
             def gradient_clipping(arg1):
                 torch.nn.utils.clip_grad_norm_(arg1, optional_gradient_clip_value, optional_gradient_norm_type)
                 return
         else:
             print(f"Using gradient clipping by Value, limit {optional_gradient_clip_value}")
+
             def gradient_clipping(arg1):
                 torch.nn.utils.clip_grad_value_(arg1, optional_gradient_clip_value)
                 return
@@ -146,8 +160,8 @@ def train_hypernetwork(id_task, hypernetwork_name, learn_rate, batch_size, gradi
     save_hypernetwork_every = save_hypernetwork_every or 0
     create_image_every = create_image_every or 0
     validate_train_inputs(hypernetwork_name, learn_rate, batch_size, gradient_step, data_root,
-                                            template_file, steps, save_hypernetwork_every, create_image_every,
-                                            log_directory, name="hypernetwork")
+                          template_file, steps, save_hypernetwork_every, create_image_every,
+                          log_directory, name="hypernetwork")
 
     load_hypernetwork(hypernetwork_name)
     assert shared.loaded_hypernetwork is not None, f"Cannot load {hypernetwork_name}!"
@@ -192,7 +206,7 @@ def train_hypernetwork(id_task, hypernetwork_name, learn_rate, batch_size, gradi
         tensorboard_writer = None
     # dataset loading may take a while, so input validations and early returns should be done before this
     shared.state.textinfo = f"Preparing dataset from {html.escape(data_root)}..."
-    detach_grad = shared.opts.disable_ema # test code that removes EMA
+    detach_grad = shared.opts.disable_ema  # test code that removes EMA
     if detach_grad:
         print("Disabling training for staged models!")
         shared.sd_model.cond_stage_model.requires_grad_(False)
@@ -201,20 +215,20 @@ def train_hypernetwork(id_task, hypernetwork_name, learn_rate, batch_size, gradi
     pin_memory = shared.opts.pin_memory
 
     ds = PersonalizedBase(data_root=data_root, width=training_width,
-                                                            height=training_height,
-                                                            repeats=shared.opts.training_image_repeats_per_epoch,
-                                                            placeholder_token=hypernetwork_name, model=shared.sd_model,
-                                                            cond_model=shared.sd_model.cond_stage_model,
-                                                            device=devices.device, template_file=template_file,
-                                                            include_cond=True, batch_size=batch_size,
-                                                            gradient_step=gradient_step, shuffle_tags=shuffle_tags,
-                                                            tag_drop_out=tag_drop_out,
-                                                            latent_sampling_method=latent_sampling_method)
+                          height=training_height,
+                          repeats=shared.opts.training_image_repeats_per_epoch,
+                          placeholder_token=hypernetwork_name, model=shared.sd_model,
+                          cond_model=shared.sd_model.cond_stage_model,
+                          device=devices.device, template_file=template_file,
+                          include_cond=True, batch_size=batch_size,
+                          gradient_step=gradient_step, shuffle_tags=shuffle_tags,
+                          tag_drop_out=tag_drop_out,
+                          latent_sampling_method=latent_sampling_method)
 
     latent_sampling_method = ds.latent_sampling_method
 
     dl = PersonalizedDataLoader(ds, latent_sampling_method=latent_sampling_method,
-                                                                  batch_size=ds.batch_size, pin_memory=pin_memory)
+                                batch_size=ds.batch_size, pin_memory=pin_memory)
     old_parallel_processing_allowed = shared.parallel_processing_allowed
 
     if unload:
@@ -246,8 +260,10 @@ def train_hypernetwork(id_task, hypernetwork_name, learn_rate, batch_size, gradi
             print("Cannot resume from saved optimizer!")
             print(e)
     if use_beta_scheduler:
-        scheduler_beta = CosineAnnealingWarmUpRestarts(optimizer=optimizer, first_cycle_steps=beta_repeat_epoch, cycle_mult=epoch_mult, max_lr=scheduler.learn_rate, warmup_steps=warmup, min_lr=min_lr, gamma=gamma_rate)
-        scheduler_beta.last_epoch =hypernetwork.step-1
+        scheduler_beta = CosineAnnealingWarmUpRestarts(optimizer=optimizer, first_cycle_steps=beta_repeat_epoch,
+                                                       cycle_mult=epoch_mult, max_lr=scheduler.learn_rate,
+                                                       warmup_steps=warmup, min_lr=min_lr, gamma=gamma_rate)
+        scheduler_beta.last_epoch = hypernetwork.step - 1
     else:
         scheduler_beta = None
         for pg in optimizer.param_groups:
@@ -341,7 +357,9 @@ def train_hypernetwork(id_task, hypernetwork_name, learn_rate, batch_size, gradi
 
                 description = f"Training hypernetwork [Epoch {epoch_num}: {epoch_step + 1}/{steps_per_epoch}]loss: {loss_step:.7f}"
                 pbar.set_description(description)
-                if hypernetwork_dir is not None and ((use_beta_scheduler and scheduler_beta.is_EOC(hypernetwork.step) and save_when_converge) or (save_hypernetwork_every > 0 and steps_done % save_hypernetwork_every == 0)):
+                if hypernetwork_dir is not None and (
+                        (use_beta_scheduler and scheduler_beta.is_EOC(hypernetwork.step) and save_when_converge) or (
+                        save_hypernetwork_every > 0 and steps_done % save_hypernetwork_every == 0)):
                     # Before saving, change name to match current checkpoint.
                     hypernetwork_name_every = f'{hypernetwork_name}-{steps_done}'
                     last_saved_file = os.path.join(hypernetwork_dir, f'{hypernetwork_name_every}.pt')
@@ -352,16 +370,19 @@ def train_hypernetwork(id_task, hypernetwork_name, learn_rate, batch_size, gradi
                     hypernetwork.optimizer_state_dict = None  # dereference it after saving, to save memory.
 
                 write_loss(log_directory, "hypernetwork_loss.csv", hypernetwork.step, steps_per_epoch,
-                                             {
-                                                 "loss": f"{loss_step:.7f}",
-                                                 "learn_rate": optimizer.param_groups[0]['lr']
-                                             })
+                           {
+                               "loss": f"{loss_step:.7f}",
+                               "learn_rate": optimizer.param_groups[0]['lr']
+                           })
                 if shared.opts.training_enable_tensorboard:
                     epoch_num = hypernetwork.step // len(ds)
                     epoch_step = hypernetwork.step - (epoch_num * len(ds)) + 1
                     mean_loss = sum(sum(x) for x in loss_dict.values()) / sum(len(x) for x in loss_dict.values())
-                    tensorboard_add(tensorboard_writer, loss=mean_loss, global_step=hypernetwork.step, step=epoch_step, learn_rate=scheduler.learn_rate, epoch_num=epoch_num)
-                if images_dir is not None and (use_beta_scheduler and scheduler_beta.is_EOC(hypernetwork.step) and create_when_converge) or (create_image_every > 0 and steps_done % create_image_every == 0):
+                    tensorboard_add(tensorboard_writer, loss=mean_loss, global_step=hypernetwork.step, step=epoch_step,
+                                    learn_rate=scheduler.learn_rate, epoch_num=epoch_num)
+                if images_dir is not None and (
+                        use_beta_scheduler and scheduler_beta.is_EOC(hypernetwork.step) and create_when_converge) or (
+                        create_image_every > 0 and steps_done % create_image_every == 0):
                     forced_filename = f'{hypernetwork_name}-{steps_done}'
                     last_saved_image = os.path.join(images_dir, forced_filename)
                     rng_state = torch.get_rng_state()
@@ -401,7 +422,8 @@ def train_hypernetwork(id_task, hypernetwork_name, learn_rate, batch_size, gradi
                     processed = processing.process_images(p)
                     image = processed.images[0] if len(processed.images) > 0 else None
                     if shared.opts.training_enable_tensorboard and shared.opts.training_tensorboard_save_images:
-                        tensorboard_add_image(tensorboard_writer, f"Validation at epoch {epoch_num}", image, hypernetwork.step)
+                        tensorboard_add_image(tensorboard_writer, f"Validation at epoch {epoch_num}", image,
+                                              hypernetwork.step)
 
                     if unload:
                         shared.sd_model.cond_stage_model.to(devices.cpu)
@@ -454,14 +476,15 @@ Last saved image: {html.escape(last_saved_image)}<br/>
 
 
 def internal_clean_training(hypernetwork_name, data_root, log_directory,
-                    create_image_every, save_hypernetwork_every,
-                    preview_from_txt2img, preview_prompt, preview_negative_prompt, preview_steps, preview_sampler_index, preview_cfg_scale, preview_seed, preview_width, preview_height,
-                    move_optimizer=True,
-                    load_hypernetworks_option='', load_training_options=''):
+                            create_image_every, save_hypernetwork_every,
+                            preview_from_txt2img, preview_prompt, preview_negative_prompt, preview_steps,
+                            preview_sampler_index, preview_cfg_scale, preview_seed, preview_width, preview_height,
+                            move_optimizer=True,
+                            load_hypernetworks_option='', load_training_options=''):
     # images allows training previews to have infotext. Importing it at the top causes a circular import problem.
     from modules import images
     if load_hypernetworks_option != '':
-        timeStr = time.asctime()[:19]
+        timeStr = time.strftime('%Y%m%d%H%M%S')
         dump_hyper: dict = get_training_option(load_hypernetworks_option)
         hypernetwork_name = hypernetwork_name + timeStr
         enable_sizes = dump_hyper['enable_sizes']
@@ -475,16 +498,17 @@ def internal_clean_training(hypernetwork_name, data_root, log_directory,
         optional_info = dump_hyper['optional_info']
         weight_init_seed = dump_hyper['weight_init_seed']
         normal_std = dump_hyper['normal_std']
-        hypernetwork = create_hypernetwork_load(hypernetwork_name, enable_sizes, overwrite_old, layer_structure, activation_func, weight_init, add_layer_norm, use_dropout, dropout_structure, optional_info, weight_init_seed, normal_std)
+        hypernetwork = create_hypernetwork_load(hypernetwork_name, enable_sizes, overwrite_old, layer_structure,
+                                                activation_func, weight_init, add_layer_norm, use_dropout,
+                                                dropout_structure, optional_info, weight_init_seed, normal_std)
     else:
         load_hypernetwork(hypernetwork_name)
-        hypernetwork_name = hypernetwork_name + time.asctime()[:19]
+        hypernetwork_name = hypernetwork_name + time.strftime('%Y%m%d%H%M%S')
         shared.loaded_hypernetwork.save(hypernetwork_name)
-        load_hypernetwork(hypernetwork_name)
     if load_training_options != '':
         dump: dict = get_training_option(load_training_options)
         if dump and dump is not None:
-            learn_rate = dump['hypernetwork_learn_rate']
+            learn_rate = dump['learn_rate']
             batch_size = dump['batch_size']
             gradient_step = dump['gradient_step']
             training_width = dump['training_width']
@@ -517,20 +541,23 @@ def internal_clean_training(hypernetwork_name, data_root, log_directory,
         raise RuntimeError(f"Cannot load from {load_training_options}!")
     try:
         if use_adamw_parameter:
-            adamw_weight_decay, adamw_beta_1, adamw_beta_2, adamw_eps = [float(x) for x in [adamw_weight_decay, adamw_beta_1, adamw_beta_2, adamw_eps]]
+            adamw_weight_decay, adamw_beta_1, adamw_beta_2, adamw_eps = [float(x) for x in
+                                                                         [adamw_weight_decay, adamw_beta_1,
+                                                                          adamw_beta_2, adamw_eps]]
             assert 0 <= adamw_weight_decay, "Weight decay paramter should be larger or equal than zero!"
-            assert (all(0 <= x <= 1 for x in [adamw_beta_1, adamw_beta_2, adamw_eps])), "Cannot use negative or >1 number for adamW parameters!"
+            assert (all(0 <= x <= 1 for x in [adamw_beta_1, adamw_beta_2,
+                                              adamw_eps])), "Cannot use negative or >1 number for adamW parameters!"
             adamW_kwarg_dict = {
-                'weight_decay' : adamw_weight_decay,
-                'betas' : (adamw_beta_1, adamw_beta_2),
-                'eps' : adamw_eps
+                'weight_decay': adamw_weight_decay,
+                'betas': (adamw_beta_1, adamw_beta_2),
+                'eps': adamw_eps
             }
             print('Using custom AdamW parameters')
         else:
             adamW_kwarg_dict = {
-                'weight_decay' : 0.01,
-                'betas' : (0.9, 0.99),
-                'eps' : 1e-8
+                'weight_decay': 0.01,
+                'betas': (0.9, 0.99),
+                'eps': 1e-8
             }
         if use_beta_scheduler:
             print("Using Beta Scheduler")
@@ -549,10 +576,10 @@ def internal_clean_training(hypernetwork_name, data_root, log_directory,
             print(f"Generate image when converges : {create_when_converge}")
         else:
             beta_repeat_epoch = 4000
-            epoch_mult=1
-            warmup=10
-            min_lr=1e-7
-            gamma_rate=1
+            epoch_mult = 1
+            warmup = 10
+            min_lr = 1e-7
+            gamma_rate = 1
             save_when_converge = False
             create_when_converge = False
     except ValueError:
@@ -568,12 +595,15 @@ def internal_clean_training(hypernetwork_name, data_root, log_directory,
             except ValueError:
                 raise RuntimeError(f"Cannot convert invalid gradient norm type {optional_gradient_norm_type})")
             assert grad_norm >= 0, f"P-norm cannot be calculated from negative number {grad_norm}"
-            print(f"Using gradient clipping by Norm, norm type {optional_gradient_norm_type}, norm limit {optional_gradient_clip_value}")
+            print(
+                f"Using gradient clipping by Norm, norm type {optional_gradient_norm_type}, norm limit {optional_gradient_clip_value}")
+
             def gradient_clipping(arg1):
                 torch.nn.utils.clip_grad_norm_(arg1, optional_gradient_clip_value, optional_gradient_norm_type)
                 return
         else:
             print(f"Using gradient clipping by Value, limit {optional_gradient_clip_value}")
+
             def gradient_clipping(arg1):
                 torch.nn.utils.clip_grad_value_(arg1, optional_gradient_clip_value)
                 return
@@ -583,8 +613,9 @@ def internal_clean_training(hypernetwork_name, data_root, log_directory,
     save_hypernetwork_every = save_hypernetwork_every or 0
     create_image_every = create_image_every or 0
     validate_train_inputs(hypernetwork_name, learn_rate, batch_size, gradient_step, data_root,
-                                            template_file, steps, save_hypernetwork_every, create_image_every,
-                                            log_directory, name="hypernetwork")
+                          template_file, steps, save_hypernetwork_every, create_image_every,
+                          log_directory, name="hypernetwork")
+    load_hypernetwork(hypernetwork_name)
     assert shared.loaded_hypernetwork is not None, f"Cannot load {hypernetwork_name}!"
     if not isinstance(shared.loaded_hypernetwork, Hypernetwork):
         raise RuntimeError("Cannot perform training for Hypernetwork structure pipeline!")
@@ -627,7 +658,7 @@ def internal_clean_training(hypernetwork_name, data_root, log_directory,
         tensorboard_writer = None
     # dataset loading may take a while, so input validations and early returns should be done before this
     shared.state.textinfo = f"Preparing dataset from {html.escape(data_root)}..."
-    detach_grad = shared.opts.disable_ema # test code that removes EMA
+    detach_grad = shared.opts.disable_ema  # test code that removes EMA
     if detach_grad:
         print("Disabling training for staged models!")
         shared.sd_model.cond_stage_model.requires_grad_(False)
@@ -636,20 +667,20 @@ def internal_clean_training(hypernetwork_name, data_root, log_directory,
     pin_memory = shared.opts.pin_memory
 
     ds = PersonalizedBase(data_root=data_root, width=training_width,
-                                                            height=training_height,
-                                                            repeats=shared.opts.training_image_repeats_per_epoch,
-                                                            placeholder_token=hypernetwork_name, model=shared.sd_model,
-                                                            cond_model=shared.sd_model.cond_stage_model,
-                                                            device=devices.device, template_file=template_file,
-                                                            include_cond=True, batch_size=batch_size,
-                                                            gradient_step=gradient_step, shuffle_tags=shuffle_tags,
-                                                            tag_drop_out=tag_drop_out,
-                                                            latent_sampling_method=latent_sampling_method)
+                          height=training_height,
+                          repeats=shared.opts.training_image_repeats_per_epoch,
+                          placeholder_token=hypernetwork_name, model=shared.sd_model,
+                          cond_model=shared.sd_model.cond_stage_model,
+                          device=devices.device, template_file=template_file,
+                          include_cond=True, batch_size=batch_size,
+                          gradient_step=gradient_step, shuffle_tags=shuffle_tags,
+                          tag_drop_out=tag_drop_out,
+                          latent_sampling_method=latent_sampling_method)
 
     latent_sampling_method = ds.latent_sampling_method
 
     dl = PersonalizedDataLoader(ds, latent_sampling_method=latent_sampling_method,
-                                                                  batch_size=ds.batch_size, pin_memory=pin_memory)
+                                batch_size=ds.batch_size, pin_memory=pin_memory)
     old_parallel_processing_allowed = shared.parallel_processing_allowed
 
     if unload:
@@ -681,8 +712,10 @@ def internal_clean_training(hypernetwork_name, data_root, log_directory,
             print("Cannot resume from saved optimizer!")
             print(e)
     if use_beta_scheduler:
-        scheduler_beta = CosineAnnealingWarmUpRestarts(optimizer=optimizer, first_cycle_steps=beta_repeat_epoch, cycle_mult=epoch_mult, max_lr=scheduler.learn_rate, warmup_steps=warmup, min_lr=min_lr, gamma=gamma_rate)
-        scheduler_beta.last_epoch =hypernetwork.step-1
+        scheduler_beta = CosineAnnealingWarmUpRestarts(optimizer=optimizer, first_cycle_steps=beta_repeat_epoch,
+                                                       cycle_mult=epoch_mult, max_lr=scheduler.learn_rate,
+                                                       warmup_steps=warmup, min_lr=min_lr, gamma=gamma_rate)
+        scheduler_beta.last_epoch = hypernetwork.step - 1
     else:
         scheduler_beta = None
         for pg in optimizer.param_groups:
@@ -776,7 +809,9 @@ def internal_clean_training(hypernetwork_name, data_root, log_directory,
 
                 description = f"Training hypernetwork [Epoch {epoch_num}: {epoch_step + 1}/{steps_per_epoch}]loss: {loss_step:.7f}"
                 pbar.set_description(description)
-                if hypernetwork_dir is not None and ((use_beta_scheduler and scheduler_beta.is_EOC(hypernetwork.step) and save_when_converge) or (save_hypernetwork_every > 0 and steps_done % save_hypernetwork_every == 0)):
+                if hypernetwork_dir is not None and (
+                        (use_beta_scheduler and scheduler_beta.is_EOC(hypernetwork.step) and save_when_converge) or (
+                        save_hypernetwork_every > 0 and steps_done % save_hypernetwork_every == 0)):
                     # Before saving, change name to match current checkpoint.
                     hypernetwork_name_every = f'{hypernetwork_name}-{steps_done}'
                     last_saved_file = os.path.join(hypernetwork_dir, f'{hypernetwork_name_every}.pt')
@@ -787,16 +822,19 @@ def internal_clean_training(hypernetwork_name, data_root, log_directory,
                     hypernetwork.optimizer_state_dict = None  # dereference it after saving, to save memory.
 
                 write_loss(log_directory, "hypernetwork_loss.csv", hypernetwork.step, steps_per_epoch,
-                                             {
-                                                 "loss": f"{loss_step:.7f}",
-                                                 "learn_rate": optimizer.param_groups[0]['lr']
-                                             })
+                           {
+                               "loss": f"{loss_step:.7f}",
+                               "learn_rate": optimizer.param_groups[0]['lr']
+                           })
                 if shared.opts.training_enable_tensorboard:
                     epoch_num = hypernetwork.step // len(ds)
                     epoch_step = hypernetwork.step - (epoch_num * len(ds)) + 1
                     mean_loss = sum(sum(x) for x in loss_dict.values()) / sum(len(x) for x in loss_dict.values())
-                    tensorboard_add(tensorboard_writer, loss=mean_loss, global_step=hypernetwork.step, step=epoch_step, learn_rate=scheduler.learn_rate, epoch_num=epoch_num)
-                if images_dir is not None and (use_beta_scheduler and scheduler_beta.is_EOC(hypernetwork.step) and create_when_converge) or (create_image_every > 0 and steps_done % create_image_every == 0):
+                    tensorboard_add(tensorboard_writer, loss=mean_loss, global_step=hypernetwork.step, step=epoch_step,
+                                    learn_rate=scheduler.learn_rate, epoch_num=epoch_num)
+                if images_dir is not None and (
+                        use_beta_scheduler and scheduler_beta.is_EOC(hypernetwork.step) and create_when_converge) or (
+                        create_image_every > 0 and steps_done % create_image_every == 0):
                     forced_filename = f'{hypernetwork_name}-{steps_done}'
                     last_saved_image = os.path.join(images_dir, forced_filename)
                     rng_state = torch.get_rng_state()
@@ -836,7 +874,8 @@ def internal_clean_training(hypernetwork_name, data_root, log_directory,
                     processed = processing.process_images(p)
                     image = processed.images[0] if len(processed.images) > 0 else None
                     if shared.opts.training_enable_tensorboard and shared.opts.training_tensorboard_save_images:
-                        tensorboard_add_image(tensorboard_writer, f"Validation at epoch {epoch_num}", image, hypernetwork.step)
+                        tensorboard_add_image(tensorboard_writer, f"Validation at epoch {epoch_num}", image,
+                                              hypernetwork.step)
 
                     if unload:
                         shared.sd_model.cond_stage_model.to(devices.cpu)
@@ -889,20 +928,25 @@ Last saved image: {html.escape(last_saved_image)}<br/>
 
 
 def train_hypernetwork_tuning(id_task, hypernetwork_name, data_root, log_directory,
-                       create_image_every, save_hypernetwork_every, preview_from_txt2img, preview_prompt,
-                       preview_negative_prompt, preview_steps, preview_sampler_index, preview_cfg_scale, preview_seed,
-                       preview_width, preview_height,
-                       move_optimizer=True,
-                    optional_new_hypernetwork_name='', load_hypernetworks_options='', load_training_options=''):
+                              create_image_every, save_hypernetwork_every, preview_from_txt2img, preview_prompt,
+                              preview_negative_prompt, preview_steps, preview_sampler_index, preview_cfg_scale,
+                              preview_seed,
+                              preview_width, preview_height,
+                              move_optimizer=True,
+                              optional_new_hypernetwork_name='', load_hypernetworks_options='',
+                              load_training_options=''):
     load_hypernetworks_options = load_hypernetworks_options.split(',')
     load_training_options = load_training_options.split(',')
     # images allows training previews to have infotext. Importing it at the top causes a circular import problem.
     for load_hypernetworks_option in load_hypernetworks_options:
         for load_training_option in load_training_options:
-            internal_clean_training(hypernetwork_name if load_hypernetworks_option != '' else optional_new_hypernetwork_name, data_root, log_directory,
-                            create_image_every, save_hypernetwork_every,
-                            preview_from_txt2img, preview_prompt, preview_negative_prompt, preview_steps, preview_sampler_index, preview_cfg_scale, preview_seed, preview_width, preview_height,
-                            move_optimizer,
-                            load_hypernetworks_option, load_training_option)
+            internal_clean_training(
+                hypernetwork_name if load_hypernetworks_option == '' else optional_new_hypernetwork_name, data_root,
+                log_directory,
+                create_image_every, save_hypernetwork_every,
+                preview_from_txt2img, preview_prompt, preview_negative_prompt, preview_steps, preview_sampler_index,
+                preview_cfg_scale, preview_seed, preview_width, preview_height,
+                move_optimizer,
+                load_hypernetworks_option, load_training_option)
             if shared.state.interrupted:
                 return

@@ -341,9 +341,17 @@ def list_hypernetworks(path):
             res[name] = filename
     return res
 
+def find_closest_first(keyset, target):
+    for keys in keyset:
+        if target == keys.rsplit('(', 1)[0]:
+            return keys
+    return None
 
 def load_hypernetwork(filename):
     path = shared.hypernetworks.get(filename, None)
+    if path is None:
+        filename = find_closest_first(shared.hypernetworks.keys(), filename)
+        path = shared.hypernetworks.get(filename, None)
     print(path)
     # Prevent any file named "None.pt" from being loaded.
     if path is not None and filename != "None":

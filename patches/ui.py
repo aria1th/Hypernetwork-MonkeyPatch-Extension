@@ -35,8 +35,8 @@ def create_hypernetwork_load(name, enable_sizes, overwrite_old, layer_structure=
         normal_std=normal_std
     )
     hypernet.save(fn)
-
-    load_hypernetwork(name)
+    shared.reload_hypernetworks()
+    load_hypernetwork(fn)
 
     return hypernet
 
