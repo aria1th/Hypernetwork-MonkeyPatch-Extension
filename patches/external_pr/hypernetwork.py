@@ -16,6 +16,7 @@ import tqdm
 from modules import shared, sd_models, devices, processing, sd_samplers
 from modules.hypernetworks.hypernetwork import optimizer_dict, stack_conds, save_hypernetwork, report_statistics
 from modules.textual_inversion.learn_schedule import LearnRateScheduler
+from modules.textual_inversion.textual_inversion import tensorboard_setup, tensorboard_add, tensorboard_add_image
 from .textual_inversion import validate_train_inputs, write_loss
 from ..hypernetwork import Hypernetwork, load_hypernetwork
 from . import sd_hijack_checkpoint
@@ -24,7 +25,7 @@ from ..scheduler import CosineAnnealingWarmUpRestarts
 from .dataset import PersonalizedBase,PersonalizedDataLoader
 
 
-def train_hypernetwork(hypernetwork_name, learn_rate, batch_size, gradient_step, data_root, log_directory,
+def train_hypernetwork(id_task, hypernetwork_name, learn_rate, batch_size, gradient_step, data_root, log_directory,
                        training_width, training_height, steps, shuffle_tags, tag_drop_out, latent_sampling_method,
                        create_image_every, save_hypernetwork_every, template_file, preview_from_txt2img, preview_prompt,
                        preview_negative_prompt, preview_steps, preview_sampler_index, preview_cfg_scale, preview_seed,
@@ -112,6 +113,7 @@ def train_hypernetwork(hypernetwork_name, learn_rate, batch_size, gradient_step,
     if not isinstance(shared.loaded_hypernetwork, Hypernetwork):
         raise RuntimeError("Cannot perform training for Hypernetwork structure pipeline!")
 
+    shared.state.job = "train-hypernetwork"
     shared.state.textinfo = "Initializing hypernetwork training..."
     shared.state.job_count = steps
 
@@ -142,7 +144,11 @@ def train_hypernetwork(hypernetwork_name, learn_rate, batch_size, gradient_step,
         return hypernetwork, filename
 
     scheduler = LearnRateScheduler(learn_rate, steps, initial_step)
-
+    if shared.opts.training_enable_tensorboard:
+        print("Tensorboard logging enabled")
+        tensorboard_writer = tensorboard_setup(log_directory)
+    else:
+        tensorboard_writer = None
     # dataset loading may take a while, so input validations and early returns should be done before this
     shared.state.textinfo = f"Preparing dataset from {html.escape(data_root)}..."
 
@@ -163,10 +169,18 @@ def train_hypernetwork(hypernetwork_name, learn_rate, batch_size, gradient_step,
 
     dl = PersonalizedDataLoader(ds, latent_sampling_method=latent_sampling_method,
                                                                   batch_size=ds.batch_size, pin_memory=pin_memory)
+    old_parallel_processing_allowed = shared.parallel_processing_allowed
 
     if unload:
+        shared.parallel_processing_allowed = False
         shared.sd_model.cond_stage_model.to(devices.cpu)
         shared.sd_model.first_stage_model.to(devices.cpu)
+
+    detach_grad = False # test code that removes EMA
+    if detach_grad:
+        shared.sd_model.cond_stage_model.requires_grad_(False)
+        shared.sd_model.first_stage_model.requires_grad_(False)
+        torch.cuda.empty_cache()
 
     weights = hypernetwork.weights(True)
 
@@ -285,7 +299,8 @@ def train_hypernetwork(hypernetwork_name, learn_rate, batch_size, gradient_step,
                 epoch_num = hypernetwork.step // steps_per_epoch
                 epoch_step = hypernetwork.step % steps_per_epoch
 
-                pbar.set_description(f"[Epoch {epoch_num}: {epoch_step + 1}/{steps_per_epoch}]loss: {loss_step:.7f}")
+                description = f"Training hypernetwork [Epoch {epoch_num}: {epoch_step + 1}/{steps_per_epoch}]loss: {loss_step:.7f}"
+                pbar.set_description(description)
                 if hypernetwork_dir is not None and ((use_beta_scheduler and scheduler_beta.is_EOC(hypernetwork.step) and save_when_converge) or (save_hypernetwork_every > 0 and steps_done % save_hypernetwork_every == 0)):
                     # Before saving, change name to match current checkpoint.
                     hypernetwork_name_every = f'{hypernetwork_name}-{steps_done}'
@@ -301,7 +316,11 @@ def train_hypernetwork(hypernetwork_name, learn_rate, batch_size, gradient_step,
                                                  "loss": f"{loss_step:.7f}",
                                                  "learn_rate": optimizer.param_groups[0]['lr']
                                              })
-
+                if shared.opts.training_enable_tensorboard:
+                    epoch_num = hypernetwork.step // len(ds)
+                    epoch_step = hypernetwork.step - (epoch_num * len(ds)) + 1
+                    mean_loss = sum(sum(x) for x in loss_dict.values()) / sum(len(x) for x in loss_dict.values())
+                    tensorboard_add(tensorboard_writer, loss=mean_loss, global_step=hypernetwork.step, step=epoch_step, learn_rate=scheduler.learn_rate, epoch_num=epoch_num)
                 if images_dir is not None and (use_beta_scheduler and scheduler_beta.is_EOC(hypernetwork.step) and create_when_converge) or (create_image_every > 0 and steps_done % create_image_every == 0):
                     forced_filename = f'{hypernetwork_name}-{steps_done}'
                     last_saved_image = os.path.join(images_dir, forced_filename)
@@ -341,6 +360,8 @@ def train_hypernetwork(hypernetwork_name, learn_rate, batch_size, gradient_step,
 
                     processed = processing.process_images(p)
                     image = processed.images[0] if len(processed.images) > 0 else None
+                    if shared.opts.training_enable_tensorboard and shared.opts.training_tensorboard_save_images:
+                        tensorboard_add_image(tensorboard_writer, f"Validation at epoch {epoch_num}", image, hypernetwork.step)
 
                     if unload:
                         shared.sd_model.cond_stage_model.to(devices.cpu)
@@ -352,7 +373,7 @@ def train_hypernetwork(hypernetwork_name, learn_rate, batch_size, gradient_step,
                     if move_optimizer:
                         optim_to(optimizer, devices.device)
                     if image is not None:
-                        shared.state.current_image = image
+                        shared.state.assign_current_image(image)
                         last_saved_image, last_text_info = images.save_image(image, images_dir, "", p.seed, p.prompt,
                                                                              shared.opts.samples_format,
                                                                              processed.infotexts[0], p=p,
@@ -377,6 +398,7 @@ Last saved image: {html.escape(last_saved_image)}<br/>
         pbar.leave = False
         pbar.close()
         hypernetwork.eval()
+        shared.parallel_processing_allowed = old_parallel_processing_allowed
     report_statistics(loss_dict)
     filename = os.path.join(shared.cmd_opts.hypernetwork_dir, f'{hypernetwork_name}.pt')
     hypernetwork.optimizer_name = optimizer_name

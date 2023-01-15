@@ -7,7 +7,7 @@ import filelock
 # This is full copy of modules/hashes. This will be only loaded if compatibility issue happens due to version mismatch.
 cache_filename = "cache.json"
 cache_data = None
-
+blksize = 1 << 20
 
 def dump_cache():
     with filelock.FileLock(cache_filename+".lock"):
@@ -34,9 +34,9 @@ def cache(subsection):
 
 def calculate_sha256(filename):
     hash_sha256 = hashlib.sha256()
-
+    global blksize
     with open(filename, "rb") as f:
-        for chunk in iter(lambda: f.read(4096), b""):
+        for chunk in iter(lambda: f.read(blksize), b""):
             hash_sha256.update(chunk)
 
     return hash_sha256.hexdigest()

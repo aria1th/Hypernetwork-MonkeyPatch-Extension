@@ -19,6 +19,8 @@ from modules.textual_inversion.image_embedding import caption_image_overlay, ins
 from modules.textual_inversion.learn_schedule import LearnRateScheduler
 from modules.textual_inversion.textual_inversion import save_embedding
 
+from torch.utils.tensorboard import SummaryWriter
+from modules.textual_inversion.textual_inversion import tensorboard_add, tensorboard_setup, tensorboard_add_scaler, tensorboard_add_image
 #apply OsError avoid here
 delayed_values = {}
 
@@ -84,7 +86,7 @@ def validate_train_inputs(model_name, learn_rate, batch_size, gradient_step, dat
         assert log_directory, "Log directory is empty"
 
 
-def train_embedding(embedding_name, learn_rate, batch_size, gradient_step, data_root, log_directory, training_width,
+def train_embedding(id_task, embedding_name, learn_rate, batch_size, gradient_step, data_root, log_directory, training_width,
                     training_height, steps, shuffle_tags, tag_drop_out, latent_sampling_method, create_image_every,
                     save_embedding_every, template_file, save_image_with_stored_embedding, preview_from_txt2img,
                     preview_prompt, preview_negative_prompt, preview_steps, preview_sampler_index, preview_cfg_scale,
@@ -200,6 +202,12 @@ def train_embedding(embedding_name, learn_rate, batch_size, gradient_step, data_
     scheduler = LearnRateScheduler(learn_rate, steps, initial_step)
     # dataset loading may take a while, so input validations and early returns should be done before this
     shared.state.textinfo = f"Preparing dataset from {html.escape(data_root)}..."
+    old_parallel_processing_allowed = shared.parallel_processing_allowed
+
+    tensorboard_writer = None
+    if shared.opts.training_enable_tensorboard:
+        print("Tensorboard logging enabled")
+        tensorboard_writer = tensorboard_setup(log_directory)
 
     pin_memory = shared.opts.pin_memory
     shared.sd_model.cond_stage_model.to(devices.device)
@@ -220,6 +228,7 @@ def train_embedding(embedding_name, learn_rate, batch_size, gradient_step, data_
                                                                   batch_size=ds.batch_size, pin_memory=pin_memory)
 
     if unload:
+        shared.parallel_processing_allowed = False
         shared.sd_model.first_stage_model.to(devices.cpu)
 
     embedding.vec.requires_grad = True
@@ -380,21 +389,19 @@ def train_embedding(embedding_name, learn_rate, batch_size, gradient_step, data_
                     processed = processing.process_images(p)
                     image = processed.images[0] if len(processed.images) > 0 else None
 
-                    if unload:
-                        shared.sd_model.first_stage_model.to(devices.cpu)
-                    torch.set_rng_state(rng_state)
-                    if torch.cuda.is_available():
-                        torch.cuda.set_rng_state_all(cuda_rng_state)
                     if move_optimizer:
                         optim_to(optimizer, devices.device)
                     if image is not None:
-                        shared.state.current_image = image
+                        shared.state.assign_current_image(image)
                         last_saved_image, last_text_info = images.save_image(image, images_dir, "", p.seed, p.prompt,
                                                                              shared.opts.samples_format,
                                                                              processed.infotexts[0], p=p,
                                                                              forced_filename=forced_filename,
                                                                              save_to_dirs=False)
                         last_saved_image += f", prompt: {preview_text}"
+                        if shared.opts.training_enable_tensorboard and shared.opts.training_tensorboard_save_images:
+                            tensorboard_add_image(tensorboard_writer, f"Validation at epoch {epoch_num}", image,
+                                                  embedding.step)
 
                     if save_image_with_stored_embedding and os.path.exists(
                             last_saved_file) and embedding_yet_to_be_embedded:
@@ -422,13 +429,18 @@ def train_embedding(embedding_name, learn_rate, batch_size, gradient_step, data_
 
                         captioned_image.save(last_saved_image_chunks, "PNG", pnginfo=info)
                         embedding_yet_to_be_embedded = False
-
+                    if unload:
+                        shared.sd_model.first_stage_model.to(devices.cpu)
+                    torch.set_rng_state(rng_state)
+                    if torch.cuda.is_available():
+                        torch.cuda.set_rng_state_all(cuda_rng_state)
                     last_saved_image, last_text_info = images.save_image(image, images_dir, "", p.seed, p.prompt,
                                                                          shared.opts.samples_format,
                                                                          processed.infotexts[0], p=p,
                                                                          forced_filename=forced_filename,
                                                                          save_to_dirs=False)
                     last_saved_image += f", prompt: {preview_text}"
+
 
                 shared.state.job_no = embedding.step
 
@@ -450,5 +462,5 @@ Last saved image: {html.escape(last_saved_image)}<br/>
         pbar.leave = False
         pbar.close()
         shared.sd_model.first_stage_model.to(devices.device)
-
+        shared.parallel_processing_allowed = old_parallel_processing_allowed
     return embedding, filename

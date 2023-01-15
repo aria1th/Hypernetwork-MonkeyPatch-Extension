@@ -36,6 +36,7 @@ Hypernetwork saved to {html.escape(filename)}
 
 
 def on_train_gamma_tab(params=None):
+    dummy_component = gr.Label(visible=False)
     with gr.Tab(label="Train_Gamma") as train_gamma:
         gr.HTML(
             value="<p style='margin-bottom: 0.7em'>Train an embedding or Hypernetwork; you must specify a directory <a href=\"https://github.com/AUTOMATIC1111/stable-diffusion-webui/wiki/Textual-Inversion\" style=\"font-weight:bold;\">[wiki]</a></p>")
@@ -145,6 +146,7 @@ def on_train_gamma_tab(params=None):
         fn=wrap_gradio_gpu_call(train_embedding_external, extra_outputs=[gr.update()]),
         _js="start_training_textual_inversion",
         inputs=[
+            dummy_component,
             train_embedding_name,
             embedding_learn_rate,
             batch_size,
@@ -192,6 +194,7 @@ def on_train_gamma_tab(params=None):
         fn=wrap_gradio_gpu_call(train_hypernetwork_ui, extra_outputs=[gr.update()]),
         _js="start_training_textual_inversion",
         inputs=[
+            dummy_component,
             train_hypernetwork_name,
             hypernetwork_learn_rate,
             batch_size,
