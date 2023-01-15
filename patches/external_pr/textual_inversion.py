@@ -319,10 +319,6 @@ def train_embedding(id_task, embedding_name, learn_rate, batch_size, gradient_st
                     del x
                     _loss_step += loss.item()
                 scaler.scale(loss).backward()
-                for group in optimizer.param_groups:
-                    for param in group["params"]:
-                        if param.grad is None:
-                            print("Found no grad!")
                 # go back until we reach gradient accumulation steps
                 if (j + 1) % gradient_step != 0:
                     continue
