@@ -46,6 +46,15 @@ If you're unsure about options, just enable every checkbox, and don't change def
 This also fixes some CUDA memory issues. Currently both Beta and Gamma Training is working very well, as far as I could say.
 
 
+### Hyperparameter Tuning
+![image](https://user-images.githubusercontent.com/35677394/212574147-22a32b03-6544-4aee-9ac7-fdefd2b7ee56.png)
+Now you can save hypernetwork generation / training setting, and load it in train_tuning tab. This will allow combination of hypernetwork structures, and training setups, to find best way for stuff. 
+
+### CLIP change test tab
+![image](https://user-images.githubusercontent.com/35677394/212574217-3dd08007-e33f-4179-96e9-5a90bccd4907.png)
+Now you can select CLIP model, its difference is significant but whether its better or not is unknown.
+
+
 
 ### Planned features
 Allow using general models with .safetensor save /loading
