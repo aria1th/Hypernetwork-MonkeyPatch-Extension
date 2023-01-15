@@ -210,6 +210,12 @@ def train_embedding(id_task, embedding_name, learn_rate, batch_size, gradient_st
         tensorboard_writer = tensorboard_setup(log_directory)
 
     pin_memory = shared.opts.pin_memory
+    detach_grad = shared.opts.disable_ema # test code that removes EMA
+    if detach_grad:
+        print("Disabling training for staged models!")
+        shared.sd_model.cond_stage_model.requires_grad_(False)
+        shared.sd_model.first_stage_model.requires_grad_(False)
+        torch.cuda.empty_cache()
     shared.sd_model.cond_stage_model.to(devices.device)
     shared.sd_model.first_stage_model.to(devices.device)
     ds = PersonalizedBase(data_root=data_root, width=training_width,

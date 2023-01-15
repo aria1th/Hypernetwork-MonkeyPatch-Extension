@@ -187,11 +187,16 @@ def create_extension_tab2(params=None):
                 )
     return [(CLIP_test_interface, "CLIP_test", "clip_test")]
 
+def on_ui_settings():
+    shared.opts.add_option("disable_ema",
+        shared.OptionInfo(False, "Detach grad from conditioning models",
+        section=('training', "Training")))
 
 #script_callbacks.on_ui_train_tabs(create_training_tab)   # Deprecate Beta Training
 script_callbacks.on_ui_train_tabs(create_extension_tab)
 script_callbacks.on_ui_train_tabs(external_patch_ui.on_train_gamma_tab)
 script_callbacks.on_ui_tabs(create_extension_tab2)
+script_callbacks.on_ui_settings(on_ui_settings)
 class Script(scripts.Script):
     def title(self):
         return "Hypernetwork Monkey Patch"

@@ -151,7 +151,12 @@ def train_hypernetwork(id_task, hypernetwork_name, learn_rate, batch_size, gradi
         tensorboard_writer = None
     # dataset loading may take a while, so input validations and early returns should be done before this
     shared.state.textinfo = f"Preparing dataset from {html.escape(data_root)}..."
-
+    detach_grad = shared.opts.disable_ema # test code that removes EMA
+    if detach_grad:
+        print("Disabling training for staged models!")
+        shared.sd_model.cond_stage_model.requires_grad_(False)
+        shared.sd_model.first_stage_model.requires_grad_(False)
+        torch.cuda.empty_cache()
     pin_memory = shared.opts.pin_memory
 
     ds = PersonalizedBase(data_root=data_root, width=training_width,
@@ -175,12 +180,6 @@ def train_hypernetwork(id_task, hypernetwork_name, learn_rate, batch_size, gradi
         shared.parallel_processing_allowed = False
         shared.sd_model.cond_stage_model.to(devices.cpu)
         shared.sd_model.first_stage_model.to(devices.cpu)
-
-    detach_grad = False # test code that removes EMA
-    if detach_grad:
-        shared.sd_model.cond_stage_model.requires_grad_(False)
-        shared.sd_model.first_stage_model.requires_grad_(False)
-        torch.cuda.empty_cache()
 
     weights = hypernetwork.weights(True)
 
