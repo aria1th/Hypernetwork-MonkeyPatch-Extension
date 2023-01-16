@@ -26,11 +26,11 @@ from .dataset import PersonalizedBase, PersonalizedDataLoader
 
 def get_training_option(filename):
     print(filename)
-    if os.path.exists(os.path.join(shared.cmd_opts.hypernetwork_dir, filename)):
+    if os.path.exists(os.path.join(shared.cmd_opts.hypernetwork_dir, filename)) and os.path.isfile(os.path.join(shared.cmd_opts.hypernetwork_dir, filename)):
         filename = os.path.join(shared.cmd_opts.hypernetwork_dir, filename)
-    elif os.path.exists(filename):
+    elif os.path.exists(filename) and os.path.isfile(filename):
         filename = filename
-    elif os.path.exists(os.path.join(shared.cmd_opts.hypernetwork_dir, filename + '.json')):
+    elif os.path.exists(os.path.join(shared.cmd_opts.hypernetwork_dir, filename + '.json')) and os.path.isfile(os.path.join(shared.cmd_opts.hypernetwork_dir, filename + '.json')):
         filename = os.path.join(shared.cmd_opts.hypernetwork_dir, filename + '.json')
     else:
         return False
@@ -83,7 +83,7 @@ def train_hypernetwork(id_task, hypernetwork_name, learn_rate, batch_size, gradi
             adamw_beta_2 = dump['adamw_beta_2']
             adamw_eps = dump['adamw_eps']
             use_grad_opts = dump['show_gradient_clip_checkbox']
-            gradient_clip_opt = dump['use_grad_opts']
+            gradient_clip_opt = dump['gradient_clip_opt']
             optional_gradient_clip_value = dump['optional_gradient_clip_value']
             optional_gradient_norm_type = dump['optional_gradient_norm_type']
     try:
@@ -507,8 +507,10 @@ def internal_clean_training(hypernetwork_name, data_root, log_directory,
                                                 dropout_structure, optional_info, weight_init_seed, normal_std)
     else:
         load_hypernetwork(hypernetwork_name)
-        hypernetwork_name = hypernetwork_name + time.strftime('%Y%m%d%H%M%S')
-        shared.loaded_hypernetwork.save(hypernetwork_name)
+        hypernetwork_name = hypernetwork_name.rsplit('(',1)[0] + time.strftime('%Y%m%d%H%M%S')
+        shared.loaded_hypernetwork.save(os.path.join(shared.cmd_opts.hypernetwork_dir, f"{hypernetwork_name}.pt"))
+        shared.reload_hypernetworks()
+        load_hypernetwork(hypernetwork_name)
     if load_training_options != '':
         dump: dict = get_training_option(load_training_options)
         if dump and dump is not None:
@@ -976,7 +978,7 @@ def train_hypernetwork_tuning(id_task, hypernetwork_name, data_root, log_directo
     # images allows training previews to have infotext. Importing it at the top causes a circular import problem.
     for load_hypernetworks_option in load_hypernetworks_options:
         load_hypernetworks_option = load_hypernetworks_option.strip(' ')
-        if get_training_option(load_hypernetworks_option) is False:
+        if load_hypernetworks_option != '' and get_training_option(load_hypernetworks_option) is False:
             print(f"Cannot load from {load_hypernetworks_option}!")
             continue
         for load_training_option in load_training_options:

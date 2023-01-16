@@ -12,6 +12,9 @@ def trigger_sd_hijack(enabled, pretrained_key):
     print("Hijacked clip text model!")
     sd_hijack.model_hijack.undo_hijack(shared.sd_model)
     sd_hijack.model_hijack.hijack(shared.sd_model)
+    if not enabled:
+        StableDiffusionModelHijack.hijack = default_hijack
+
 
 def clear_any_hijacks():
     StableDiffusionModelHijack.hijack = default_hijack
