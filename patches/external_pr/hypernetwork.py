@@ -14,7 +14,7 @@ import tqdm
 from modules import shared, sd_models, devices, processing, sd_samplers
 from modules.hypernetworks.hypernetwork import optimizer_dict, stack_conds, save_hypernetwork, report_statistics
 from modules.textual_inversion.learn_schedule import LearnRateScheduler
-from modules.textual_inversion.textual_inversion import tensorboard_setup, tensorboard_add, tensorboard_add_image
+from ..tbutils import tensorboard_setup, tensorboard_add, tensorboard_add_image, tensorboard_log_hyperparameter
 from .textual_inversion import validate_train_inputs, write_loss
 from ..hypernetwork import Hypernetwork, load_hypernetwork
 from . import sd_hijack_checkpoint
@@ -379,7 +379,7 @@ def train_hypernetwork(id_task, hypernetwork_name, learn_rate, batch_size, gradi
                     epoch_step = hypernetwork.step - (epoch_num * len(ds)) + 1
                     mean_loss = sum(sum(x) for x in loss_dict.values()) / sum(len(x) for x in loss_dict.values())
                     tensorboard_add(tensorboard_writer, loss=mean_loss, global_step=hypernetwork.step, step=epoch_step,
-                                    learn_rate=scheduler.learn_rate, epoch_num=epoch_num)
+                                    learn_rate=scheduler.learn_rate if not use_beta_scheduler else optimizer.param_groups[0]['lr'], epoch_num=epoch_num)
                 if images_dir is not None and (
                         use_beta_scheduler and scheduler_beta.is_EOC(hypernetwork.step) and create_when_converge) or (
                         create_image_every > 0 and steps_done % create_image_every == 0):
@@ -483,6 +483,7 @@ def internal_clean_training(hypernetwork_name, data_root, log_directory,
                             load_hypernetworks_option='', load_training_options=''):
     # images allows training previews to have infotext. Importing it at the top causes a circular import problem.
     from modules import images
+    base_hypernetwork_name = hypernetwork_name
     if load_hypernetworks_option != '':
         timeStr = time.strftime('%Y%m%d%H%M%S')
         dump_hyper: dict = get_training_option(load_hypernetworks_option)
@@ -626,7 +627,7 @@ def internal_clean_training(hypernetwork_name, data_root, log_directory,
 
     hypernetwork_name = hypernetwork_name.rsplit('(', 1)[0]
     filename = os.path.join(shared.cmd_opts.hypernetwork_dir, f'{hypernetwork_name}.pt')
-
+    base_log_directory = log_directory
     log_directory = os.path.join(log_directory, datetime.datetime.now().strftime("%Y-%m-%d"), hypernetwork_name)
     unload = shared.opts.unload_models_when_training
 
@@ -653,7 +654,8 @@ def internal_clean_training(hypernetwork_name, data_root, log_directory,
     scheduler = LearnRateScheduler(learn_rate, steps, initial_step)
     if shared.opts.training_enable_tensorboard:
         print("Tensorboard logging enabled")
-        tensorboard_writer = tensorboard_setup(log_directory)
+        tensorboard_writer = tensorboard_setup(os.path.join(base_log_directory, base_hypernetwork_name))
+
     else:
         tensorboard_writer = None
     # dataset loading may take a while, so input validations and early returns should be done before this
@@ -831,7 +833,7 @@ def internal_clean_training(hypernetwork_name, data_root, log_directory,
                     epoch_step = hypernetwork.step - (epoch_num * len(ds)) + 1
                     mean_loss = sum(sum(x) for x in loss_dict.values()) / sum(len(x) for x in loss_dict.values())
                     tensorboard_add(tensorboard_writer, loss=mean_loss, global_step=hypernetwork.step, step=epoch_step,
-                                    learn_rate=scheduler.learn_rate, epoch_num=epoch_num)
+                                    learn_rate=scheduler.learn_rate, epoch_num=epoch_num,base_name=hypernetwork_name)
                 if images_dir is not None and (
                         use_beta_scheduler and scheduler_beta.is_EOC(hypernetwork.step) and create_when_converge) or (
                         create_image_every > 0 and steps_done % create_image_every == 0):
@@ -913,6 +915,33 @@ Last saved image: {html.escape(last_saved_image)}<br/>
         pbar.close()
         hypernetwork.eval()
         shared.parallel_processing_allowed = old_parallel_processing_allowed
+        if shared.opts.training_enable_tensorboard:
+            tensorboard_log_hyperparameter(tensorboard_writer, lr=learn_rate,
+                                           GA_steps=gradient_step,
+                                           batch_size=batch_size,
+                                           layer_structure=hypernetwork.layer_structure,
+                                           activation=hypernetwork.activation_func,
+                                           weight_init=hypernetwork.weight_init,
+                                           dropout_structure=hypernetwork.dropout_structure,
+                                           max_steps=steps,
+                                           latent_sampling_method=latent_sampling_method,
+                                           template=template_file,
+                                           CosineAnnealing=use_beta_scheduler,
+                                           beta_repeat_epoch=beta_repeat_epoch,
+                                           epoch_mult=epoch_mult,
+                                           warmup=warmup,
+                                           min_lr=min_lr,
+                                           gamma_rate=gamma_rate,
+                                           adamW_opts=use_adamw_parameter,
+                                           adamW_decay=adamw_weight_decay,
+                                           adamW_beta_1=adamw_beta_1,
+                                           adamW_beta_2=adamw_beta_2,
+                                           adamW_eps=adamw_eps,
+                                           gradient_clip=gradient_clip_opt,
+                                           gradient_clip_value=optional_gradient_clip_value,
+                                           gradient_clip_norm_type=optional_gradient_norm_type,
+                                           loss=mean_loss
+                                           )
     report_statistics(loss_dict)
     filename = os.path.join(shared.cmd_opts.hypernetwork_dir, f'{hypernetwork_name}.pt')
     hypernetwork.optimizer_name = optimizer_name
