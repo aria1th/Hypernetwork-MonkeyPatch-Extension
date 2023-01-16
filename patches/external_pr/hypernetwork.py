@@ -877,7 +877,7 @@ def internal_clean_training(hypernetwork_name, data_root, log_directory,
                     image = processed.images[0] if len(processed.images) > 0 else None
                     if shared.opts.training_enable_tensorboard and shared.opts.training_tensorboard_save_images:
                         tensorboard_add_image(tensorboard_writer, f"Validation at epoch {epoch_num}", image,
-                                              hypernetwork.step)
+                                              hypernetwork.step, base_name=hypernetwork_name)
 
                     if unload:
                         shared.sd_model.cond_stage_model.to(devices.cpu)
