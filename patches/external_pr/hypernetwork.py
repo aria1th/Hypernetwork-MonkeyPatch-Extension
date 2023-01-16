@@ -833,7 +833,7 @@ def internal_clean_training(hypernetwork_name, data_root, log_directory,
                     epoch_step = hypernetwork.step - (epoch_num * len(ds)) + 1
                     mean_loss = sum(sum(x) for x in loss_dict.values()) / sum(len(x) for x in loss_dict.values())
                     tensorboard_add(tensorboard_writer, loss=mean_loss, global_step=hypernetwork.step, step=epoch_step,
-                                    learn_rate=scheduler.learn_rate, epoch_num=epoch_num,base_name=hypernetwork_name)
+                                    learn_rate=scheduler.learn_rate if not use_beta_scheduler else optimizer.param_groups[0]['lr'], epoch_num=epoch_num,base_name=hypernetwork_name)
                 if images_dir is not None and (
                         use_beta_scheduler and scheduler_beta.is_EOC(hypernetwork.step) and create_when_converge) or (
                         create_image_every > 0 and steps_done % create_image_every == 0):
@@ -940,7 +940,8 @@ Last saved image: {html.escape(last_saved_image)}<br/>
                                            gradient_clip=gradient_clip_opt,
                                            gradient_clip_value=optional_gradient_clip_value,
                                            gradient_clip_norm_type=optional_gradient_norm_type,
-                                           loss=mean_loss
+                                           loss=mean_loss,
+                                           base_hypernetwork_name= hypernetwork_name
                                            )
     report_statistics(loss_dict)
     filename = os.path.join(shared.cmd_opts.hypernetwork_dir, f'{hypernetwork_name}.pt')
