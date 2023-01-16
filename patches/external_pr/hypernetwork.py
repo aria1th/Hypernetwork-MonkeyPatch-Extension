@@ -435,7 +435,10 @@ def train_hypernetwork(id_task, hypernetwork_name, learn_rate, batch_size, gradi
                     if move_optimizer:
                         optim_to(optimizer, devices.device)
                     if image is not None:
-                        shared.state.assign_current_image(image)
+                        if hasattr(shared.state, 'assign_current_image'):
+                            shared.state.assign_current_image(image)
+                        else:
+                            shared.state.current_image = image
                         last_saved_image, last_text_info = images.save_image(image, images_dir, "", p.seed, p.prompt,
                                                                              shared.opts.samples_format,
                                                                              processed.infotexts[0], p=p,
@@ -889,7 +892,10 @@ def internal_clean_training(hypernetwork_name, data_root, log_directory,
                     if move_optimizer:
                         optim_to(optimizer, devices.device)
                     if image is not None:
-                        shared.state.assign_current_image(image)
+                        if hasattr(shared.state, 'assign_current_image'):
+                            shared.state.assign_current_image(image)
+                        else:
+                            shared.state.current_image = image
                         last_saved_image, last_text_info = images.save_image(image, images_dir, "", p.seed, p.prompt,
                                                                              shared.opts.samples_format,
                                                                              processed.infotexts[0], p=p,

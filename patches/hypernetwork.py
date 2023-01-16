@@ -15,10 +15,10 @@ from torch.nn.init import normal_, xavier_uniform_, zeros_, xavier_normal_, kaim
 import scripts.xy_grid
 from modules.shared import opts
 try:
-    from modules import hashes
+    from modules.hashes import sha256
 except ImportError or ModuleNotFoundError:
     print("modules.hashes is not found, will use backup module from extension!")
-    import hashes_backup as hashes
+    from .hashes_backup import sha256
 
 from .scheduler import CosineAnnealingWarmUpRestarts
 
@@ -214,8 +214,8 @@ class Hypernetwork:
                 layer.requires_grad_(False)
 
     def shorthash(self):
-        sha256 = hashes.sha256(self.filename, f'hypernet/{self.name}')
-        return sha256[0:10]
+        sha256v = sha256(self.filename, f'hypernet/{self.name}')
+        return sha256v[0:10]
 
     def save(self, filename):
         state_dict = {}
@@ -431,7 +431,7 @@ def train_hypernetwork(hypernetwork_name, learn_rate, batch_size, data_root, log
         raise RuntimeError("Cannot use advanced LR scheduler settings!")
     save_hypernetwork_every = save_hypernetwork_every or 0
     create_image_every = create_image_every or 0
-    textual_inversion.validate_train_inputs(hypernetwork_name, learn_rate, batch_size, data_root, template_file, steps,
+    textual_inversion.validate_train_inputs(hypernetwork_name, learn_rate, batch_size, 1, template_file, steps,
                                             save_hypernetwork_every, create_image_every, log_directory,
                                             name="hypernetwork")
 

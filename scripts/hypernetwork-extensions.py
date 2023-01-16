@@ -217,6 +217,10 @@ def on_ui_settings():
     shared.opts.add_option("disable_ema",
         shared.OptionInfo(False, "Detach grad from conditioning models",
         section=('training', "Training")))
+    if not hasattr(shared.opts, 'training_enable_tensorboard'):
+        shared.opts.add_option("training_enable_tensorboard",
+                               shared.OptionInfo(False, "Enable tensorboard logging",
+                                                 section=('training', "Training")))
 
 #script_callbacks.on_ui_train_tabs(create_training_tab)   # Deprecate Beta Training
 script_callbacks.on_ui_train_tabs(create_extension_tab)

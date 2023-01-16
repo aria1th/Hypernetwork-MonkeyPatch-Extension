@@ -3,7 +3,6 @@ import os
 
 from modules import shared, sd_hijack, devices
 from .hypernetwork import Hypernetwork, train_hypernetwork, load_hypernetwork
-import gradio as gr
 
 def create_hypernetwork_load(name, enable_sizes, overwrite_old, layer_structure=None, activation_func=None, weight_init=None, add_layer_norm=False, use_dropout=False, dropout_structure=None, optional_info=None,
                         weight_init_seed=None, normal_std=0.01):

@@ -20,7 +20,7 @@ from modules.textual_inversion.learn_schedule import LearnRateScheduler
 from modules.textual_inversion.textual_inversion import save_embedding
 
 from torch.utils.tensorboard import SummaryWriter
-from modules.textual_inversion.textual_inversion import tensorboard_add, tensorboard_setup, tensorboard_add_scaler, tensorboard_add_image
+from ..tbutils import tensorboard_add, tensorboard_setup, tensorboard_add_scaler, tensorboard_add_image
 #apply OsError avoid here
 delayed_values = {}
 
@@ -397,7 +397,10 @@ def train_embedding(id_task, embedding_name, learn_rate, batch_size, gradient_st
                     if move_optimizer:
                         optim_to(optimizer, devices.device)
                     if image is not None:
-                        shared.state.assign_current_image(image)
+                        if hasattr(shared.state, 'assign_current_image'):
+                            shared.state.assign_current_image(image)
+                        else:
+                            shared.state.current_image = image
                         last_saved_image, last_text_info = images.save_image(image, images_dir, "", p.seed, p.prompt,
                                                                              shared.opts.samples_format,
                                                                              processed.infotexts[0], p=p,
