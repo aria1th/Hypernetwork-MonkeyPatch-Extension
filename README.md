@@ -17,12 +17,15 @@ For Variable Dropout, see https://github.com/AUTOMATIC1111/stable-diffusion-webu
 **No-Crop Training**
 ![image](https://user-images.githubusercontent.com/35677394/203495373-cef04677-cdd6-43b0-ba42-d7c0f3d5a78f.png)
 You can train without cropping images. 
+THis feature is now implemented in original webui too! :partying_face: 
 
 **Fix OSError while training**
 
 **Unload Optimizer while generating Previews**
 
+**Tensorboard integration, and Tuning**
 
+**Residual-Block based Hypernetwork(in beta test)**
 
 
 ### Create_Beta_hypernetwork allows creating beta hypernetworks.
