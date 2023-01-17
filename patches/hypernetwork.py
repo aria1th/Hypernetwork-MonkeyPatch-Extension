@@ -208,7 +208,7 @@ class HypernetworkModule(torch.nn.Module):
 
     def forward(self, x, multiplier=None):
         if self.skip_connection:
-            if self.training or multiplier is None or not isinstance(multiplier, (int, float)):
+            if self.training:
                 return self.linear(x)
             else:
                 resnet_result = self.linear(x)
@@ -222,6 +222,7 @@ class HypernetworkModule(torch.nn.Module):
 
     def trainables(self, train=False):
         layer_structure = []
+        self.train(train)
         for layer in self.linear:
             if train:
                 layer.train()
@@ -234,6 +235,7 @@ class HypernetworkModule(torch.nn.Module):
         return layer_structure
 
     def set_train(self,mode=True):
+        self.train(mode)
         for layer in self.linear:
             if mode:
                 layer.train(mode)
