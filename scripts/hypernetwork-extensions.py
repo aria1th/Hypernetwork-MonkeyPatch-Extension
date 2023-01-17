@@ -135,6 +135,7 @@ def create_extension_tab(params=None):
         new_hypernetwork_dropout_structure = gr.Textbox("0, 0, 0",
                                                         label="Enter hypernetwork Dropout structure (or empty). Recommended : 0~0.35 incrementing sequence: 0, 0.05, 0.15",
                                                         placeholder="1st and last digit must be 0 and values should be between 0 and 1. ex:'0, 0.01, 0'")
+        skip_connection = gr.Checkbox(label="Use skip-connection. Won't work without extension!")
         optional_info = gr.Textbox("", label="Optional information about Hypernetwork", placeholder="Training information, dateset, etc")
         overwrite_old_hypernetwork = gr.Checkbox(value=False, label="Overwrite Old Hypernetwork")
 
@@ -165,7 +166,8 @@ def create_extension_tab(params=None):
                 new_hypernetwork_dropout_structure,
                 optional_info,
                 generation_seed if generation_seed.visible else None,
-                normal_std if normal_std.visible else 0.01],
+                normal_std if normal_std.visible else 0.01,
+                skip_connection],
             outputs=[
                 ti_output,
                 ti_outcome,
@@ -185,7 +187,8 @@ def create_extension_tab(params=None):
                 new_hypernetwork_dropout_structure,
                 optional_info,
                 generation_seed if generation_seed.visible else None,
-                normal_std if normal_std.visible else 0.01
+                normal_std if normal_std.visible else 0.01,
+                skip_connection
             ],
             outputs=[
                 new_hypernetwork_name,

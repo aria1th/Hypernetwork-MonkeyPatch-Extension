@@ -82,7 +82,7 @@ def save_training_setting(*args):
 
 
 def save_hypernetwork_setting(*args):
-    save_file_name, enable_sizes, overwrite_old, layer_structure, activation_func, weight_init, add_layer_norm, use_dropout, dropout_structure, optional_info, weight_init_seed, normal_std = args
+    save_file_name, enable_sizes, overwrite_old, layer_structure, activation_func, weight_init, add_layer_norm, use_dropout, dropout_structure, optional_info, weight_init_seed, normal_std, skip_connection = args
     dumped_locals = locals()
     dumped_locals.pop('args')
     filename = (str(random.randint(0, 1024)) if save_file_name == '' else save_file_name) + '_hypernetwork_' + '.json'

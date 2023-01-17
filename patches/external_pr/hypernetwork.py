@@ -502,9 +502,10 @@ def internal_clean_training(hypernetwork_name, data_root, log_directory,
         optional_info = dump_hyper['optional_info']
         weight_init_seed = dump_hyper['weight_init_seed']
         normal_std = dump_hyper['normal_std']
+        skip_connection = dump_hyper['skip_connection']
         hypernetwork = create_hypernetwork_load(hypernetwork_name, enable_sizes, overwrite_old, layer_structure,
                                                 activation_func, weight_init, add_layer_norm, use_dropout,
-                                                dropout_structure, optional_info, weight_init_seed, normal_std)
+                                                dropout_structure, optional_info, weight_init_seed, normal_std, skip_connection)
     else:
         load_hypernetwork(hypernetwork_name)
         hypernetwork_name = hypernetwork_name.rsplit('(',1)[0] + time.strftime('%Y%m%d%H%M%S')

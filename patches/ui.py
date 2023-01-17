@@ -5,7 +5,7 @@ from modules import shared, sd_hijack, devices
 from .hypernetwork import Hypernetwork, train_hypernetwork, load_hypernetwork
 
 def create_hypernetwork_load(name, enable_sizes, overwrite_old, layer_structure=None, activation_func=None, weight_init=None, add_layer_norm=False, use_dropout=False, dropout_structure=None, optional_info=None,
-                        weight_init_seed=None, normal_std=0.01):
+                        weight_init_seed=None, normal_std=0.01, skip_connection=False):
     # Remove illegal characters from name.
     name = "".join( x for x in name if (x.isalnum() or x in "._- "))
     assert name, "Name cannot be empty!"
@@ -31,7 +31,8 @@ def create_hypernetwork_load(name, enable_sizes, overwrite_old, layer_structure=
         dropout_structure=dropout_structure if use_dropout and dropout_structure else [0] * len(layer_structure),
         optional_info=optional_info,
         generation_seed=weight_init_seed if weight_init_seed != -1 else None,
-        normal_std=normal_std
+        normal_std=normal_std,
+        skip_connection=skip_connection
     )
     hypernet.save(fn)
     shared.reload_hypernetworks()
@@ -41,7 +42,7 @@ def create_hypernetwork_load(name, enable_sizes, overwrite_old, layer_structure=
 
 
 def create_hypernetwork(name, enable_sizes, overwrite_old, layer_structure=None, activation_func=None, weight_init=None, add_layer_norm=False, use_dropout=False, dropout_structure=None, optional_info=None,
-                        weight_init_seed=None, normal_std=0.01):
+                        weight_init_seed=None, normal_std=0.01, skip_connection=False):
     # Remove illegal characters from name.
     name = "".join( x for x in name if (x.isalnum() or x in "._- "))
     assert name, "Name cannot be empty!"
@@ -67,7 +68,8 @@ def create_hypernetwork(name, enable_sizes, overwrite_old, layer_structure=None,
         dropout_structure=dropout_structure if use_dropout and dropout_structure else [0] * len(layer_structure),
         optional_info=optional_info,
         generation_seed=weight_init_seed if weight_init_seed != -1 else None,
-        normal_std=normal_std
+        normal_std=normal_std,
+        skip_connection=skip_connection
     )
     hypernet.save(fn)
 
