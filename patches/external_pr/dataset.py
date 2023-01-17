@@ -11,7 +11,6 @@ from torch.utils.data import Dataset, DataLoader, Sampler
 from torchvision import transforms
 
 from ..hnutil import get_closest
-import random
 from collections import defaultdict
 from random import Random
 import tqdm
@@ -26,6 +25,7 @@ random_state_manager = Random(None)
 shuffle = random_state_manager.shuffle
 choice = random_state_manager.choice
 choices = random_state_manager.choices
+randrange = random_state_manager.randrange
 
 
 def set_rng(seed=None):
@@ -50,7 +50,7 @@ class PersonalizedBase(Dataset):
                  shuffle_tags=False, tag_drop_out=0, latent_sampling_method='once', latent_sampling_std=-1):
         re_word = re.compile(shared.opts.dataset_filename_word_regex) if len(
             shared.opts.dataset_filename_word_regex) > 0 else None
-        seed = random.randrange(sys.maxsize)
+        seed = randrange(sys.maxsize)
         set_rng(seed) # reset forked RNG state when we create dataset.
         print(f"Dataset seed was set to f{seed}")
         self.placeholder_token = placeholder_token
@@ -158,7 +158,7 @@ class PersonalizedBase(Dataset):
         text = text.replace("[name]", self.placeholder_token)
         tags = filename_text.split(',')
         if self.tag_drop_out != 0:
-            tags = [t for t in tags if random.random() > self.tag_drop_out]
+            tags = [t for t in tags if random_state_manager.random() > self.tag_drop_out]
         if self.shuffle_tags:
             shuffle(tags)
         text = text.replace("[filewords]", ','.join(tags))
