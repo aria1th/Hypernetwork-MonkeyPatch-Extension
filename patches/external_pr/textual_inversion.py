@@ -21,8 +21,10 @@ from modules.textual_inversion.textual_inversion import save_embedding
 
 from torch.utils.tensorboard import SummaryWriter
 from ..tbutils import tensorboard_add, tensorboard_setup, tensorboard_add_scaler, tensorboard_add_image
-#apply OsError avoid here
+
+# apply OsError avoid here
 delayed_values = {}
+
 
 def write_loss(log_directory, filename, step, epoch_len, values):
     if shared.opts.training_write_csv_every == 0:
@@ -55,9 +57,9 @@ def write_loss(log_directory, filename, step, epoch_len, values):
                 **values,
             })
     except OSError:
-        epoch, epoch_step = divmod(step-1, epoch_len)
+        epoch, epoch_step = divmod(step - 1, epoch_len)
         if log_directory + filename in delayed_values:
-            delayed_values[log_directory + filename].append((step , epoch, epoch_step, values))
+            delayed_values[log_directory + filename].append((step, epoch, epoch_step, values))
         else:
             delayed_values[log_directory + filename] = [(step, epoch, epoch_step, values)]
 
@@ -86,15 +88,19 @@ def validate_train_inputs(model_name, learn_rate, batch_size, gradient_step, dat
         assert log_directory, "Log directory is empty"
 
 
-def train_embedding(id_task, embedding_name, learn_rate, batch_size, gradient_step, data_root, log_directory, training_width,
+def train_embedding(id_task, embedding_name, learn_rate, batch_size, gradient_step, data_root, log_directory,
+                    training_width,
                     training_height, steps, shuffle_tags, tag_drop_out, latent_sampling_method, create_image_every,
                     save_embedding_every, template_file, save_image_with_stored_embedding, preview_from_txt2img,
                     preview_prompt, preview_negative_prompt, preview_steps, preview_sampler_index, preview_cfg_scale,
                     preview_seed, preview_width, preview_height,
-                    use_beta_scheduler=False, beta_repeat_epoch=4000, epoch_mult=1,warmup =10, min_lr=1e-7, gamma_rate=1, save_when_converge=False, create_when_converge=False,
+                    use_beta_scheduler=False, beta_repeat_epoch=4000, epoch_mult=1, warmup=10, min_lr=1e-7,
+                    gamma_rate=1, save_when_converge=False, create_when_converge=False,
                     move_optimizer=True,
-                    use_adamw_parameter=False, adamw_weight_decay=0.01, adamw_beta_1=0.9, adamw_beta_2=0.99,adamw_eps=1e-8,
-                    use_grad_opts=False, gradient_clip_opt='None', optional_gradient_clip_value=1e01, optional_gradient_norm_type=2
+                    use_adamw_parameter=False, adamw_weight_decay=0.01, adamw_beta_1=0.9, adamw_beta_2=0.99,
+                    adamw_eps=1e-8,
+                    use_grad_opts=False, gradient_clip_opt='None', optional_gradient_clip_value=1e01,
+                    optional_gradient_norm_type=2, latent_sampling_std=-1
                     ):
     save_embedding_every = save_embedding_every or 0
     create_image_every = create_image_every or 0
@@ -102,20 +108,23 @@ def train_embedding(id_task, embedding_name, learn_rate, batch_size, gradient_st
                           save_embedding_every, create_image_every, log_directory, name="embedding")
     try:
         if use_adamw_parameter:
-            adamw_weight_decay, adamw_beta_1, adamw_beta_2, adamw_eps = [float(x) for x in [adamw_weight_decay, adamw_beta_1, adamw_beta_2, adamw_eps]]
+            adamw_weight_decay, adamw_beta_1, adamw_beta_2, adamw_eps = [float(x) for x in
+                                                                         [adamw_weight_decay, adamw_beta_1,
+                                                                          adamw_beta_2, adamw_eps]]
             assert 0 <= adamw_weight_decay, "Weight decay paramter should be larger or equal than zero!"
-            assert (all(0 <= x <= 1 for x in [adamw_beta_1, adamw_beta_2, adamw_eps])), "Cannot use negative or >1 number for adamW parameters!"
+            assert (all(0 <= x <= 1 for x in [adamw_beta_1, adamw_beta_2,
+                                              adamw_eps])), "Cannot use negative or >1 number for adamW parameters!"
             adamW_kwarg_dict = {
-                'weight_decay' : adamw_weight_decay,
-                'betas' : (adamw_beta_1, adamw_beta_2),
-                'eps' : adamw_eps
+                'weight_decay': adamw_weight_decay,
+                'betas': (adamw_beta_1, adamw_beta_2),
+                'eps': adamw_eps
             }
             print('Using custom AdamW parameters')
         else:
             adamW_kwarg_dict = {
-                'weight_decay' : 0.01,
-                'betas' : (0.9, 0.99),
-                'eps' : 1e-8
+                'weight_decay': 0.01,
+                'betas': (0.9, 0.99),
+                'eps': 1e-8
             }
         if use_beta_scheduler:
             print("Using Beta Scheduler")
@@ -134,10 +143,10 @@ def train_embedding(id_task, embedding_name, learn_rate, batch_size, gradient_st
             print(f"Generate image when converges : {create_when_converge}")
         else:
             beta_repeat_epoch = 4000
-            epoch_mult=1
-            warmup=10
-            min_lr=1e-7
-            gamma_rate=1
+            epoch_mult = 1
+            warmup = 10
+            min_lr = 1e-7
+            gamma_rate = 1
             save_when_converge = False
             create_when_converge = False
     except ValueError:
@@ -153,6 +162,7 @@ def train_embedding(id_task, embedding_name, learn_rate, batch_size, gradient_st
             except ValueError:
                 raise RuntimeError(f"Cannot convert invalid gradient norm type {optional_gradient_norm_type})")
             assert grad_norm >= 0, f"P-norm cannot be calculated from negative number {grad_norm}"
+
             def gradient_clipping(arg1):
                 torch.nn.utils.clip_grad_norm_(arg1, optional_gradient_clip_value, optional_gradient_norm_type)
                 return
@@ -212,38 +222,40 @@ def train_embedding(id_task, embedding_name, learn_rate, batch_size, gradient_st
         tensorboard_writer = tensorboard_setup(log_directory)
 
     pin_memory = shared.opts.pin_memory
-    detach_grad = shared.opts.disable_ema # test code that removes EMA
+    detach_grad = shared.opts.disable_ema  # test code that removes EMA
     if detach_grad:
         print("Disabling training for staged models!")
         shared.sd_model.cond_stage_model.requires_grad_(False)
         shared.sd_model.first_stage_model.requires_grad_(False)
         torch.cuda.empty_cache()
     ds = PersonalizedBase(data_root=data_root, width=training_width,
-                                                            height=training_height,
-                                                            repeats=shared.opts.training_image_repeats_per_epoch,
-                                                            placeholder_token=embedding_name, model=shared.sd_model,
-                                                            cond_model=shared.sd_model.cond_stage_model,
-                                                            device=devices.device, template_file=template_file,
-                                                            batch_size=batch_size, gradient_step=gradient_step,
-                                                            shuffle_tags=shuffle_tags, tag_drop_out=tag_drop_out,
-                                                            latent_sampling_method=latent_sampling_method)
+                          height=training_height,
+                          repeats=shared.opts.training_image_repeats_per_epoch,
+                          placeholder_token=embedding_name, model=shared.sd_model,
+                          cond_model=shared.sd_model.cond_stage_model,
+                          device=devices.device, template_file=template_file,
+                          batch_size=batch_size, gradient_step=gradient_step,
+                          shuffle_tags=shuffle_tags, tag_drop_out=tag_drop_out,
+                          latent_sampling_method=latent_sampling_method,
+                          latent_sampling_std=latent_sampling_std)
 
     latent_sampling_method = ds.latent_sampling_method
 
     dl = PersonalizedDataLoader(ds, latent_sampling_method=latent_sampling_method,
-                                                                  batch_size=ds.batch_size, pin_memory=pin_memory)
+                                batch_size=ds.batch_size, pin_memory=pin_memory)
     if unload:
         shared.parallel_processing_allowed = False
         shared.sd_model.first_stage_model.to(devices.cpu)
 
     embedding.vec.requires_grad_(True)
-    optimizer_name = 'AdamW' # hardcoded optimizer name now
+    optimizer_name = 'AdamW'  # hardcoded optimizer name now
     if use_adamw_parameter:
         optimizer = torch.optim.AdamW(params=[embedding.vec], lr=scheduler.learn_rate, **adamW_kwarg_dict)
     else:
         optimizer = torch.optim.AdamW(params=[embedding.vec], lr=scheduler.learn_rate, weight_decay=0.0)
 
-    if os.path.exists(filename + '.optim'):  # This line must be changed if Optimizer type can be different from saved optimizer.
+    if os.path.exists(
+            filename + '.optim'):  # This line must be changed if Optimizer type can be different from saved optimizer.
         try:
             optimizer_saved_dict = torch.load(filename + '.optim', map_location='cpu')
             if embedding.checksum() == optimizer_saved_dict.get('hash', None):
@@ -259,8 +271,10 @@ def train_embedding(id_task, embedding_name, learn_rate, batch_size, gradient_st
     if move_optimizer:
         optim_to(optimizer, devices.device)
     if use_beta_scheduler:
-        scheduler_beta = CosineAnnealingWarmUpRestarts(optimizer=optimizer, first_cycle_steps=beta_repeat_epoch, cycle_mult=epoch_mult, max_lr=scheduler.learn_rate, warmup_steps=warmup, min_lr=min_lr, gamma=gamma_rate)
-        scheduler_beta.last_epoch = embedding.step-1
+        scheduler_beta = CosineAnnealingWarmUpRestarts(optimizer=optimizer, first_cycle_steps=beta_repeat_epoch,
+                                                       cycle_mult=epoch_mult, max_lr=scheduler.learn_rate,
+                                                       warmup_steps=warmup, min_lr=min_lr, gamma=gamma_rate)
+        scheduler_beta.last_epoch = embedding.step - 1
     else:
         scheduler_beta = None
         for pg in optimizer.param_groups:
@@ -310,7 +324,8 @@ def train_embedding(id_task, embedding_name, learn_rate, batch_size, gradient_st
                     c = shared.sd_model.cond_stage_model(batch.cond_text)
                     if is_training_inpainting_model:
                         if img_c is None:
-                            img_c = processing.txt2img_image_conditioning(shared.sd_model, c, training_width, training_height)
+                            img_c = processing.txt2img_image_conditioning(shared.sd_model, c, training_width,
+                                                                          training_height)
 
                         cond = {"c_concat": [img_c], "c_crossattn": [c]}
                     else:
@@ -340,7 +355,9 @@ def train_embedding(id_task, embedding_name, learn_rate, batch_size, gradient_st
                 epoch_step = embedding.step % steps_per_epoch
 
                 pbar.set_description(f"[Epoch {epoch_num}: {epoch_step + 1}/{steps_per_epoch}]loss: {loss_step:.7f}")
-                if embedding_dir is not None and ((use_beta_scheduler and scheduler_beta.is_EOC(embedding.step) and save_when_converge) or (save_embedding_every > 0 and steps_done % save_embedding_every == 0)):
+                if embedding_dir is not None and (
+                        (use_beta_scheduler and scheduler_beta.is_EOC(embedding.step) and save_when_converge) or (
+                        save_embedding_every > 0 and steps_done % save_embedding_every == 0)):
                     # Before saving, change name to match current checkpoint.
                     embedding_name_every = f'{embedding_name}-{steps_done}'
                     last_saved_file = os.path.join(embedding_dir, f'{embedding_name_every}.pt')
@@ -355,7 +372,9 @@ def train_embedding(id_task, embedding_name, learn_rate, batch_size, gradient_st
                     "learn_rate": scheduler.learn_rate
                 })
 
-                if images_dir is not None and ((use_beta_scheduler and scheduler_beta.is_EOC(embedding.step) and create_when_converge) or (create_image_every > 0 and steps_done % create_image_every == 0)):
+                if images_dir is not None and (
+                        (use_beta_scheduler and scheduler_beta.is_EOC(embedding.step) and create_when_converge) or (
+                        create_image_every > 0 and steps_done % create_image_every == 0)):
                     forced_filename = f'{embedding_name}-{steps_done}'
                     last_saved_image = os.path.join(images_dir, forced_filename)
                     rng_state = torch.get_rng_state()
@@ -429,7 +448,8 @@ def train_embedding(id_task, embedding_name, learn_rate, batch_size, gradient_st
 
                         checkpoint = sd_models.select_checkpoint()
                         footer_left = checkpoint.model_name
-                        footer_mid = '[{}]'.format(checkpoint.shorthash if hasattr(checkpoint, 'shorthash') else checkpoint.hash)
+                        footer_mid = '[{}]'.format(
+                            checkpoint.shorthash if hasattr(checkpoint, 'shorthash') else checkpoint.hash)
                         footer_right = '{}v {}s'.format(vectorSize, steps_done)
 
                         captioned_image = caption_image_overlay(image, title, footer_left, footer_mid, footer_right)
@@ -448,7 +468,6 @@ def train_embedding(id_task, embedding_name, learn_rate, batch_size, gradient_st
                                                                          forced_filename=forced_filename,
                                                                          save_to_dirs=False)
                     last_saved_image += f", prompt: {preview_text}"
-
 
                 shared.state.job_no = embedding.step
 

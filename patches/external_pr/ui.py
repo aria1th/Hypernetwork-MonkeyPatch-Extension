@@ -15,7 +15,6 @@ import gradio as gr
 
 
 def train_hypernetwork_ui(*args):
-
     initial_hypernetwork = shared.loaded_hypernetwork
 
     assert not shared.cmd_opts.lowvram, 'Training models with lowvram is not possible'
@@ -40,7 +39,6 @@ Hypernetwork saved to {html.escape(filename)}
 
 
 def train_hypernetwork_ui_tuning(*args):
-
     initial_hypernetwork = shared.loaded_hypernetwork
 
     assert not shared.cmd_opts.lowvram, 'Training models with lowvram is not possible'
@@ -69,7 +67,7 @@ def save_training_setting(*args):
     template_file, use_beta_scheduler, beta_repeat_epoch, epoch_mult, warmup, min_lr, \
     gamma_rate, use_beta_adamW_checkbox, save_when_converge, create_when_converge, \
     adamw_weight_decay, adamw_beta_1, adamw_beta_2, adamw_eps, show_gradient_clip_checkbox, \
-    gradient_clip_opt, optional_gradient_clip_value, optional_gradient_norm_type = args
+    gradient_clip_opt, optional_gradient_clip_value, optional_gradient_norm_type, latent_sampling_std = args
     dumped_locals = locals()
     dumped_locals.pop('args')
     filename = (str(random.randint(0, 1024)) if save_file_name == '' else save_file_name) + '_train_' + '.json'
@@ -82,7 +80,7 @@ def save_training_setting(*args):
 
 
 def save_hypernetwork_setting(*args):
-    save_file_name, enable_sizes, overwrite_old, layer_structure, activation_func, weight_init, add_layer_norm, use_dropout, dropout_structure, optional_info, weight_init_seed, normal_std = args
+    save_file_name, enable_sizes, overwrite_old, layer_structure, activation_func, weight_init, add_layer_norm, use_dropout, dropout_structure, optional_info, weight_init_seed, normal_std, skip_connection = args
     dumped_locals = locals()
     dumped_locals.pop('args')
     filename = (str(random.randint(0, 1024)) if save_file_name == '' else save_file_name) + '_hypernetwork_' + '.json'
@@ -92,6 +90,7 @@ def save_hypernetwork_setting(*args):
         json.dump(dumped_locals, file)
         print(f"File saved as {filename}")
     return filename, ""
+
 
 def on_train_gamma_tab(params=None):
     dummy_component = gr.Label(visible=False)
@@ -123,15 +122,18 @@ def on_train_gamma_tab(params=None):
             show_gradient_clip_checkbox = gr.Checkbox(
                 label='Show Gradient Clipping Options(for both)')
         with gr.Row(visible=False) as adamW_options:
-            adamw_weight_decay = gr.Textbox(label="AdamW weight decay parameter", placeholder="default = 0.01", value="0.01")
+            adamw_weight_decay = gr.Textbox(label="AdamW weight decay parameter", placeholder="default = 0.01",
+                                            value="0.01")
             adamw_beta_1 = gr.Textbox(label="AdamW beta1 parameter", placeholder="default = 0.9", value="0.9")
             adamw_beta_2 = gr.Textbox(label="AdamW beta2 parameter", placeholder="default = 0.99", value="0.99")
             adamw_eps = gr.Textbox(label="AdamW epsilon parameter", placeholder="default = 1e-8", value="1e-8")
         with gr.Row(visible=False) as beta_scheduler_options:
             use_beta_scheduler = gr.Checkbox(label='Use CosineAnnealingWarmupRestarts Scheduler')
             beta_repeat_epoch = gr.Textbox(label='Steps for cycle', placeholder="Cycles every nth Step", value="64")
-            epoch_mult = gr.Textbox(label='Step multiplier per cycle', placeholder="Step length multiplier every cycle", value="1")
-            warmup = gr.Textbox(label='Warmup step per cycle', placeholder="CosineAnnealing lr increase step", value="5")
+            epoch_mult = gr.Textbox(label='Step multiplier per cycle', placeholder="Step length multiplier every cycle",
+                                    value="1")
+            warmup = gr.Textbox(label='Warmup step per cycle', placeholder="CosineAnnealing lr increase step",
+                                value="5")
             min_lr = gr.Textbox(label='Minimum learning rate',
                                 placeholder="restricts decay value, but does not restrict gamma rate decay",
                                 value="6e-7")
@@ -144,7 +146,7 @@ def on_train_gamma_tab(params=None):
             gradient_clip_opt = gr.Radio(label="Gradient Clipping Options", choices=["None", "limit", "norm"])
             optional_gradient_clip_value = gr.Textbox(label="Limiting value", value="1e-1")
             optional_gradient_norm_type = gr.Textbox(label="Norm type", value="2")
-        #change by feedback
+        # change by feedback
         use_beta_adamW_checkbox.change(
             fn=lambda show: gr_show(show),
             inputs=[use_beta_adamW_checkbox],
@@ -165,7 +167,8 @@ def on_train_gamma_tab(params=None):
             inputs=[show_gradient_clip_checkbox],
             outputs=[gradient_clip_options],
         )
-        move_optim_when_generate = gr.Checkbox(label="Unload Optimizer when generating preview(hypernetwork)", value=True)
+        move_optim_when_generate = gr.Checkbox(label="Unload Optimizer when generating preview(hypernetwork)",
+                                               value=True)
         batch_size = gr.Number(label='Batch size', value=1, precision=0)
         gradient_step = gr.Number(label='Gradient accumulation steps', value=1, precision=0)
         dataset_directory = gr.Textbox(label='Dataset directory', placeholder="Path to directory with input images")
@@ -191,10 +194,12 @@ def on_train_gamma_tab(params=None):
         with gr.Row():
             latent_sampling_method = gr.Radio(label='Choose latent sampling method', value="once",
                                               choices=['once', 'deterministic', 'random'])
+            latent_sampling_std_value = gr.Number(label="Standard deviation for sampling", value=-1)
         with gr.Row():
             save_training_option = gr.Button(value="Save training setting")
             save_file_name = gr.Textbox(label="File name to save setting as", value="")
-            load_training_option = gr.Textbox(label="Load training option from saved json file. This will override settings above", value="")
+            load_training_option = gr.Textbox(
+                label="Load training option from saved json file. This will override settings above", value="")
         with gr.Row():
             interrupt_training = gr.Button(value="Interrupt")
             train_hypernetwork = gr.Button(value="Train Hypernetwork", variant='primary')
@@ -202,9 +207,9 @@ def on_train_gamma_tab(params=None):
         ti_output = gr.Text(elem_id="ti_output3", value="", show_label=False)
         ti_outcome = gr.HTML(elem_id="ti_error3", value="")
 
-    #Full path to .json or simple names are recommended.
+    # Full path to .json or simple names are recommended.
     save_training_option.click(
-        fn = wrap_gradio_call(save_training_setting),
+        fn=wrap_gradio_call(save_training_setting),
         inputs=[
             save_file_name,
             hypernetwork_learn_rate,
@@ -233,7 +238,8 @@ def on_train_gamma_tab(params=None):
             show_gradient_clip_checkbox,
             gradient_clip_opt,
             optional_gradient_clip_value,
-            optional_gradient_norm_type],
+            optional_gradient_norm_type,
+            latent_sampling_std_value],
         outputs=[
             ti_output,
             ti_outcome,
@@ -279,7 +285,8 @@ def on_train_gamma_tab(params=None):
             show_gradient_clip_checkbox,
             gradient_clip_opt,
             optional_gradient_clip_value,
-            optional_gradient_norm_type
+            optional_gradient_norm_type,
+            latent_sampling_std_value
         ],
         outputs=[
             ti_output,
@@ -327,6 +334,7 @@ def on_train_gamma_tab(params=None):
             gradient_clip_opt,
             optional_gradient_clip_value,
             optional_gradient_norm_type,
+            latent_sampling_std_value,
             load_training_option
 
         ],
@@ -343,6 +351,7 @@ def on_train_gamma_tab(params=None):
     )
     return [(train_gamma, "Train Gamma", "train_gamma")]
 
+
 def on_train_tuning(params=None):
     dummy_component = gr.Label(visible=False)
     with gr.Tab(label="Train_Tuning") as train_tuning:
@@ -354,14 +363,18 @@ def on_train_tuning(params=None):
             create_refresh_button(train_hypernetwork_name, shared.reload_hypernetworks,
                                   lambda: {"choices": sorted([x for x in shared.hypernetworks.keys()])},
                                   "refresh_train_hypernetwork_name")
-            optional_new_hypernetwork_name = gr.Textbox(label="Hypernetwork name to create, leave it empty to use selected", value="")
+            optional_new_hypernetwork_name = gr.Textbox(
+                label="Hypernetwork name to create, leave it empty to use selected", value="")
         with gr.Row():
             load_hypernetworks_option = gr.Textbox(
-                label="Load Hypernetwork creation option from saved json file", placeholder = ". filename cannot have ',' inside, and files should be splitted by ','.", value="")
+                label="Load Hypernetwork creation option from saved json file",
+                placeholder=". filename cannot have ',' inside, and files should be splitted by ','.", value="")
         with gr.Row():
             load_training_options = gr.Textbox(
-                label="Load training option(s) from saved json file", placeholder = ". filename cannot have ',' inside, and files should be splitted by ','.", value="")
-        move_optim_when_generate = gr.Checkbox(label="Unload Optimizer when generating preview(hypernetwork)", value=True)
+                label="Load training option(s) from saved json file",
+                placeholder=". filename cannot have ',' inside, and files should be splitted by ','.", value="")
+        move_optim_when_generate = gr.Checkbox(label="Unload Optimizer when generating preview(hypernetwork)",
+                                               value=True)
         dataset_directory = gr.Textbox(label='Dataset directory', placeholder="Path to directory with input images")
         log_directory = gr.Textbox(label='Log directory', placeholder="Path to directory where to write outputs",
                                    value="textual_inversion")
