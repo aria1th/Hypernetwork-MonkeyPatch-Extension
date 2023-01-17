@@ -58,6 +58,12 @@ Now you can save hypernetwork generation / training setting, and load it in trai
 Now you can select CLIP model, its difference is significant but whether its better or not is unknown.
 
 
+## Residual hypernetwork?
+The concept of ResNet, returning x + f(x) instead in layers, are available with option. Original webui does not support this, so you cannot load it without extension.
+Unlike expanding type (1 -> 2 -> 1), shrinking type(1 -> 0.1 -> 1) network will lost information at initial phase. In this case, we need to additionally train transformation that compresses and decompresses it. This is currently only in code, its not offered in UI at default.
+
+
+
 
 ### Planned features
 Allow using general models with .safetensor save /loading
