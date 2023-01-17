@@ -125,6 +125,9 @@ class HypernetworkModule(torch.nn.Module):
         assert dropout_structure is None or len(dropout_structure) == len(layer_structure), "Dropout Sequence should match length with layer structure!"
 
         linears = []
+        if skip_connection:
+            if generation_seed is not None:
+                torch.manual_seed(generation_seed)
         for i in range(len(layer_structure) - 1):
             if skip_connection:
                 n_inputs, n_outputs = int(dim * layer_structure[i]), int(dim * layer_structure[i+1])
