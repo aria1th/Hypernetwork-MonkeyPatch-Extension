@@ -47,7 +47,7 @@ class DatasetEntry:
 class PersonalizedBase(Dataset):
     def __init__(self, data_root, width, height, repeats, flip_p=0.5, placeholder_token="*", model=None,
                  cond_model=None, device=None, template_file=None, include_cond=False, batch_size=1, gradient_step=1,
-                 shuffle_tags=False, tag_drop_out=0, latent_sampling_method='once'):
+                 shuffle_tags=False, tag_drop_out=0, latent_sampling_method='once', latent_sampling_std=-1):
         re_word = re.compile(shared.opts.dataset_filename_word_regex) if len(
             shared.opts.dataset_filename_word_regex) > 0 else None
         seed = random.randrange(sys.maxsize)
@@ -128,6 +128,10 @@ class PersonalizedBase(Dataset):
                 latent_sample = model.get_first_stage_encoding(latent_dist).squeeze().to(devices.cpu)
                 entry = DatasetEntry(filename=path, filename_text=filename_text, latent_sample=latent_sample)
             elif latent_sampling_method == "random":
+                if latent_sampling_std != -1:
+                    assert latent_sampling_std > 0, f"Cannnot apply negative standard deviation {latent_sampling_std}"
+                    print(f"Applying patch, changing std from {latent_dist.std} to {latent_sampling_std}...")
+                    latent_dist.std = latent_sampling_std
                 entry = DatasetEntry(filename=path, filename_text=filename_text, latent_dist=latent_dist)
 
             if not (self.tag_drop_out != 0 or self.shuffle_tags):

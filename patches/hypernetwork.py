@@ -54,9 +54,13 @@ def init_weight(layer, weight_init="Normal", normal_std=0.01, activation_func="r
 
 class ResBlock(torch.nn.Module):
     """Residual Block"""
-    def __init__(self, n_inputs, n_outputs, activation_func, weight_init, add_layer_norm, dropout_p, normal_std, device=None, state_dict=None):
+    def __init__(self, n_inputs, n_outputs, activation_func, weight_init, add_layer_norm, dropout_p, normal_std, device=None, state_dict=None, **kwargs):
         super().__init__()
         self.n_outputs = n_outputs
+        self.upsample_layer = None
+        self.upsample = kwargs.get("upsample_model", None)
+        if self.upsample is "Linear":
+            self.upsample_layer = torch.nn.Linear(n_inputs, n_outputs, bias=False)
         linears = [torch.nn.Linear(n_inputs, n_outputs)]
         init_weight(linears[0], weight_init, normal_std, activation_func)
         if add_layer_norm:
@@ -88,7 +92,10 @@ class ResBlock(torch.nn.Module):
         return layer_structure
 
     def forward(self, x, **kwargs):
-        interpolated = torch.nn.functional.interpolate(x, size=self.n_outputs, mode="nearest-exact")
+        if self.upsample_layer is None:
+            interpolated = torch.nn.functional.interpolate(x, size=self.n_outputs, mode="nearest-exact")
+        else:
+            interpolated = self.upsample_layer(x)
         return interpolated + self.linear(x)
 
 
@@ -110,7 +117,7 @@ class HypernetworkModule(torch.nn.Module):
                  add_layer_norm=False, activate_output=False, dropout_structure=None, device=None, generation_seed=None, normal_std=0.01, **kwargs):
         super().__init__()
         self.skip_connection = skip_connection = kwargs.get('skip_connection', False)
-
+        upsample_linear = kwargs.get('upsample_linear', None)
         assert layer_structure is not None, "layer_structure must not be None"
         assert layer_structure[0] == 1, "Multiplier Sequence should start with size 1!"
         assert layer_structure[-1] == 1, "Multiplier Sequence should end with size 1!"
@@ -124,7 +131,7 @@ class HypernetworkModule(torch.nn.Module):
                 dropout_p = dropout_structure[i+1]
                 if activation_func is None:
                     activation_func = "linear"
-                linears.append(ResBlock(n_inputs, n_outputs, activation_func, weight_init, add_layer_norm, dropout_p, normal_std, device))
+                linears.append(ResBlock(n_inputs, n_outputs, activation_func, weight_init, add_layer_norm, dropout_p, normal_std, device, upsample_model=upsample_linear))
                 continue
 
             # Add a fully-connected layer
@@ -257,6 +264,7 @@ class Hypernetwork:
         self.dropout_structure = kwargs['dropout_structure'] if 'dropout_structure' in kwargs and use_dropout else None
         self.optional_info = kwargs.get('optional_info', None)
         self.skip_connection = kwargs.get('skip_connection', False)
+        self.upsample_linear = kwargs.get('upsample_linear', None)
         generation_seed = kwargs.get('generation_seed', None)
         normal_std = kwargs.get('normal_std', 0.01)
         if self.dropout_structure is None:
@@ -265,9 +273,11 @@ class Hypernetwork:
         for size in enable_sizes or []:
             self.layers[size] = (
                 HypernetworkModule(size, None, self.layer_structure, self.activation_func, self.weight_init,
-                                   self.add_layer_norm, self.activate_output, dropout_structure=self.dropout_structure, generation_seed=generation_seed, normal_std=normal_std, skip_connection=self.skip_connection),
+                                   self.add_layer_norm, self.activate_output, dropout_structure=self.dropout_structure, generation_seed=generation_seed, normal_std=normal_std, skip_connection=self.skip_connection,
+                                   upsample_linear=self.upsample_linear),
                 HypernetworkModule(size, None, self.layer_structure, self.activation_func, self.weight_init,
-                                   self.add_layer_norm, self.activate_output, dropout_structure=self.dropout_structure, generation_seed=generation_seed, normal_std=normal_std, skip_connection=self.skip_connection),
+                                   self.add_layer_norm, self.activate_output, dropout_structure=self.dropout_structure, generation_seed=generation_seed, normal_std=normal_std, skip_connection=self.skip_connection,
+                                   upsample_linear=self.upsample_linear),
             )
         self.eval()
 
@@ -319,6 +329,7 @@ class Hypernetwork:
         state_dict['last_layer_dropout'] = (self.dropout_structure[-2] != 0) if self.dropout_structure is not None else self.last_layer_dropout
         state_dict['optional_info'] = self.optional_info if self.optional_info else None
         state_dict['skip_connection'] = self.skip_connection
+        state_dict['upsample_linear'] = self.upsample_linear
 
         if self.optimizer_name is not None:
             optimizer_saved_dict['optimizer_name'] = self.optimizer_name
@@ -349,6 +360,7 @@ class Hypernetwork:
         self.activate_output = state_dict.get('activate_output', True)
         self.last_layer_dropout = state_dict.get('last_layer_dropout', False)  # Silent fix for HNs before 4918eb6
         self.skip_connection = state_dict.get('skip_connection', False)
+        self.upsample_linear = state_dict.get('upsample_linear', False)
         # Dropout structure should have same length as layer structure, Every digits should be in [0,1), and last digit must be 0.
         if self.dropout_structure is None:
             self.dropout_structure = parse_dropout_structure(self.layer_structure, self.use_dropout, self.last_layer_dropout)
@@ -379,9 +391,9 @@ class Hypernetwork:
             if type(size) == int:
                 self.layers[size] = (
                     HypernetworkModule(size, sd[0], self.layer_structure, self.activation_func, self.weight_init,
-                                       self.add_layer_norm, self.activate_output, self.dropout_structure, skip_connection=self.skip_connection),
+                                       self.add_layer_norm, self.activate_output, self.dropout_structure, skip_connection=self.skip_connection, upsample_linear=self.upsample_linear),
                     HypernetworkModule(size, sd[1], self.layer_structure, self.activation_func, self.weight_init,
-                                       self.add_layer_norm, self.activate_output, self.dropout_structure, skip_connection=self.skip_connection),
+                                       self.add_layer_norm, self.activate_output, self.dropout_structure, skip_connection=self.skip_connection, upsample_linear=self.upsample_linear),
                 )
 
         self.name = state_dict.get('name', self.name)

@@ -51,7 +51,7 @@ def train_hypernetwork(id_task, hypernetwork_name, learn_rate, batch_size, gradi
                        use_adamw_parameter=False, adamw_weight_decay=0.01, adamw_beta_1=0.9, adamw_beta_2=0.99,
                        adamw_eps=1e-8,
                        use_grad_opts=False, gradient_clip_opt='None', optional_gradient_clip_value=1e01,
-                       optional_gradient_norm_type=2,
+                       optional_gradient_norm_type=2, latent_sampling_std=-1,
                        load_training_options=''):
     # images allows training previews to have infotext. Importing it at the top causes a circular import problem.
     from modules import images
@@ -86,6 +86,7 @@ def train_hypernetwork(id_task, hypernetwork_name, learn_rate, batch_size, gradi
             gradient_clip_opt = dump['gradient_clip_opt']
             optional_gradient_clip_value = dump['optional_gradient_clip_value']
             optional_gradient_norm_type = dump['optional_gradient_norm_type']
+            latent_sampling_std = dump.get('latent_sampling_std', -1)
     try:
         if use_adamw_parameter:
             adamw_weight_decay, adamw_beta_1, adamw_beta_2, adamw_eps = [float(x) for x in
@@ -223,7 +224,8 @@ def train_hypernetwork(id_task, hypernetwork_name, learn_rate, batch_size, gradi
                           include_cond=True, batch_size=batch_size,
                           gradient_step=gradient_step, shuffle_tags=shuffle_tags,
                           tag_drop_out=tag_drop_out,
-                          latent_sampling_method=latent_sampling_method)
+                          latent_sampling_method=latent_sampling_method,
+                          latent_sampling_std=latent_sampling_std)
 
     latent_sampling_method = ds.latent_sampling_method
 
@@ -542,6 +544,7 @@ def internal_clean_training(hypernetwork_name, data_root, log_directory,
             gradient_clip_opt = dump['gradient_clip_opt']
             optional_gradient_clip_value = dump['optional_gradient_clip_value']
             optional_gradient_norm_type = dump['optional_gradient_norm_type']
+            latent_sampling_std = dump.get('latent_sampling_std', -1)
         else:
             raise RuntimeError(f"Cannot load from {load_training_options}!")
     else:
@@ -683,7 +686,8 @@ def internal_clean_training(hypernetwork_name, data_root, log_directory,
                           include_cond=True, batch_size=batch_size,
                           gradient_step=gradient_step, shuffle_tags=shuffle_tags,
                           tag_drop_out=tag_drop_out,
-                          latent_sampling_method=latent_sampling_method)
+                          latent_sampling_method=latent_sampling_method,
+                          latent_sampling_std=latent_sampling_std)
 
     latent_sampling_method = ds.latent_sampling_method
 
