@@ -61,6 +61,7 @@ class ResBlock(torch.nn.Module):
         init_weight(linears[0], weight_init, normal_std, activation_func)
         if add_layer_norm:
             linears.append(torch.nn.LayerNorm(n_outputs))
+            init_weight(linears[1], weight_init, normal_std, activation_func)
         if dropout_p > 0:
             linears.append(torch.nn.Dropout(p=dropout_p))
         if activation_func == "linear" or activation_func is None:
@@ -87,7 +88,8 @@ class ResBlock(torch.nn.Module):
         return layer_structure
 
     def forward(self, x, **kwargs):
-        return torch.nn.functional.interpolate(x, size=self.n_outputs, mode="nearest-exact") + self.linear(x)
+        interpolated = torch.nn.functional.interpolate(x, size=self.n_outputs, mode="nearest-exact")
+        return interpolated + self.linear(x)
 
 
 
@@ -107,7 +109,8 @@ class HypernetworkModule(torch.nn.Module):
     def __init__(self, dim, state_dict=None, layer_structure=None, activation_func=None, weight_init='Normal',
                  add_layer_norm=False, activate_output=False, dropout_structure=None, device=None, generation_seed=None, normal_std=0.01, **kwargs):
         super().__init__()
-        skip_connection = kwargs.get('skip_connection', False)
+        self.skip_connection = skip_connection = kwargs.get('skip_connection', False)
+
         assert layer_structure is not None, "layer_structure must not be None"
         assert layer_structure[0] == 1, "Multiplier Sequence should start with size 1!"
         assert layer_structure[-1] == 1, "Multiplier Sequence should end with size 1!"
@@ -197,6 +200,15 @@ class HypernetworkModule(torch.nn.Module):
             state_dict[to] = x
 
     def forward(self, x, multiplier=None):
+        if self.skip_connection:
+            if self.training or multiplier is None or not isinstance(multiplier, (int, float)):
+                return self.linear(x)
+            else:
+                resnet_result = self.linear(x)
+                residual = resnet_result - x
+                if multiplier is None or not isinstance(multiplier, (int, float)):
+                    multiplier = HypernetworkModule.multiplier
+                return x + multiplier * residual # interpolate
         if multiplier is None or not isinstance(multiplier, (int, float)):
             return x + self.linear(x) * (HypernetworkModule.multiplier if not self.training else 1)
         return x + self.linear(x) * multiplier

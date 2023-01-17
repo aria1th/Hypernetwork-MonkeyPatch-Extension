@@ -56,7 +56,7 @@ def create_hypernetwork(name, enable_sizes, overwrite_old, layer_structure=None,
     if dropout_structure and type(dropout_structure) == str:
         dropout_structure = [float(x.strip()) for x in dropout_structure.split(",")]
     normal_std = float(normal_std)
-    assert normal_std > 0, "Normal Standard Deviation should be bigger than 0!"
+    assert normal_std >= 0, "Normal Standard Deviation should be bigger than 0!"
     hypernet = Hypernetwork(
         name=name,
         enable_sizes=[int(x) for x in enable_sizes],
