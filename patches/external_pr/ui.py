@@ -384,6 +384,9 @@ def on_train_tuning(params=None):
             label='Save a copy of model to log directory every N steps, 0 to disable', value=500, precision=0)
         preview_from_txt2img = gr.Checkbox(
             label='Read parameters (prompt, etc...) from txt2img tab when making previews', value=False)
+        manual_dataset_seed = gr.Number(
+            label="Manual dataset seed", value=-1, precision=0
+        )
         with gr.Row():
             interrupt_training = gr.Button(value="Interrupt")
             train_hypernetwork = gr.Button(value="Train Hypernetwork", variant='primary')
@@ -404,7 +407,8 @@ def on_train_tuning(params=None):
             move_optim_when_generate,
             optional_new_hypernetwork_name,
             load_hypernetworks_option,
-            load_training_options
+            load_training_options,
+            manual_dataset_seed
         ],
         outputs=[
             ti_output,
