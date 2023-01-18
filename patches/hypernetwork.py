@@ -59,7 +59,7 @@ class ResBlock(torch.nn.Module):
         self.n_outputs = n_outputs
         self.upsample_layer = None
         self.upsample = kwargs.get("upsample_model", None)
-        if self.upsample is "Linear":
+        if self.upsample == "Linear":
             self.upsample_layer = torch.nn.Linear(n_inputs, n_outputs, bias=False)
         linears = [torch.nn.Linear(n_inputs, n_outputs)]
         init_weight(linears[0], weight_init, normal_std, activation_func)
