@@ -488,15 +488,18 @@ def internal_clean_training(hypernetwork_name, data_root, log_directory,
                             preview_from_txt2img, preview_prompt, preview_negative_prompt, preview_steps,
                             preview_sampler_index, preview_cfg_scale, preview_seed, preview_width, preview_height,
                             move_optimizer=True,
-                            load_hypernetworks_option='', load_training_options='', manual_dataset_seed=-1):
+                            load_hypernetworks_option='', load_training_options='', manual_dataset_seed=-1, setting_tuple=None):
     # images allows training previews to have infotext. Importing it at the top causes a circular import problem.
     from modules import images
     base_hypernetwork_name = hypernetwork_name
     manual_seed = int(manual_dataset_seed)
+    if setting_tuple is not None:
+        setting_suffix = f"_{setting_tuple[0]}_{setting_tuple[1]}"
+    else:
+        setting_suffix = time.strftime('%Y%m%d%H%M%S')
     if load_hypernetworks_option != '':
-        timeStr = time.strftime('%Y%m%d%H%M%S')
         dump_hyper: dict = get_training_option(load_hypernetworks_option)
-        hypernetwork_name = hypernetwork_name + timeStr
+        hypernetwork_name = hypernetwork_name + setting_suffix
         enable_sizes = dump_hyper['enable_sizes']
         overwrite_old = dump_hyper['overwrite_old']
         layer_structure = dump_hyper['layer_structure']
@@ -514,7 +517,7 @@ def internal_clean_training(hypernetwork_name, data_root, log_directory,
                                                 dropout_structure, optional_info, weight_init_seed, normal_std, skip_connection)
     else:
         load_hypernetwork(hypernetwork_name)
-        hypernetwork_name = hypernetwork_name.rsplit('(',1)[0] + time.strftime('%Y%m%d%H%M%S')
+        hypernetwork_name = hypernetwork_name.rsplit('(',1)[0] + setting_suffix
         shared.loaded_hypernetwork.save(os.path.join(shared.cmd_opts.hypernetwork_dir, f"{hypernetwork_name}.pt"))
         shared.reload_hypernetworks()
         load_hypernetwork(hypernetwork_name)
@@ -989,12 +992,12 @@ def train_hypernetwork_tuning(id_task, hypernetwork_name, data_root, log_directo
     load_hypernetworks_options = load_hypernetworks_options.split(',')
     load_training_options = load_training_options.split(',')
     # images allows training previews to have infotext. Importing it at the top causes a circular import problem.
-    for load_hypernetworks_option in load_hypernetworks_options:
+    for _i, load_hypernetworks_option in enumerate(load_hypernetworks_options):
         load_hypernetworks_option = load_hypernetworks_option.strip(' ')
         if load_hypernetworks_option != '' and get_training_option(load_hypernetworks_option) is False:
             print(f"Cannot load from {load_hypernetworks_option}!")
             continue
-        for load_training_option in load_training_options:
+        for _j, load_training_option in enumerate(load_training_options):
             load_training_option = load_training_option.strip(' ')
             if get_training_option(load_training_option) is False:
                 print(f"Cannot load from {load_training_option}!")
@@ -1006,6 +1009,7 @@ def train_hypernetwork_tuning(id_task, hypernetwork_name, data_root, log_directo
                 preview_from_txt2img, preview_prompt, preview_negative_prompt, preview_steps, preview_sampler_index,
                 preview_cfg_scale, preview_seed, preview_width, preview_height,
                 move_optimizer,
-                load_hypernetworks_option, load_training_option, manual_dataset_seed)
+                load_hypernetworks_option, load_training_option, manual_dataset_seed, setting_tuple=(_i, _j))
             if shared.state.interrupted:
                 return None, None
+
