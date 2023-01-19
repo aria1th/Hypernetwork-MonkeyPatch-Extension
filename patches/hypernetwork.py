@@ -369,7 +369,7 @@ class Hypernetwork:
         # Dropout structure should have same length as layer structure, Every digits should be in [0,1), and last digit must be 0.
         if self.dropout_structure is None:
             self.dropout_structure = parse_dropout_structure(self.layer_structure, self.use_dropout, self.last_layer_dropout)
-        if shared.opts.print_hypernet_extra:
+        if hasattr(shared.opts, 'print_hypernet_extra') and shared.opts.print_hypernet_extra:
             if optional_info is not None:
                 print(f"INFO:\n {optional_info}\n")
             print(f"Activation function is {self.activation_func}")
