@@ -1,5 +1,19 @@
 from modules import sd_hijack_clip, sd_hijack, shared
-from modules.sd_hijack import StableDiffusionModelHijack, EmbeddingsWithFixes, apply_optimizations, fix_checkpoint
+from modules.sd_hijack import StableDiffusionModelHijack, EmbeddingsWithFixes, apply_optimizations
+try:
+    from modules.sd_hijack import fix_checkpoint
+    def clear_any_hijacks():
+        StableDiffusionModelHijack.hijack = default_hijack
+except (ModuleNotFoundError, ImportError):
+    from modules.sd_hijack_checkpoint import add, remove
+    def fix_checkpoint():
+        add()
+
+    def clear_any_hijacks():
+        remove()
+        StableDiffusionModelHijack.hijack = default_hijack
+
+
 import ldm.modules.encoders.modules
 
 default_hijack = StableDiffusionModelHijack.hijack
@@ -16,8 +30,7 @@ def trigger_sd_hijack(enabled, pretrained_key):
         StableDiffusionModelHijack.hijack = default_hijack
 
 
-def clear_any_hijacks():
-    StableDiffusionModelHijack.hijack = default_hijack
+
 
 def create_lambda(model):
     def hijack_lambda(self, m):
@@ -42,6 +55,7 @@ def create_lambda(model):
             self.clip = m.cond_stage_model
 
             fix_checkpoint()
+
 
             def flatten(el):
                 flattened = [flatten(children) for children in el.children()]

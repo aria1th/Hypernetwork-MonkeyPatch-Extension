@@ -291,7 +291,8 @@ def train_hypernetwork(id_task, hypernetwork_name, learn_rate, batch_size, gradi
     last_saved_file = "<none>"
     last_saved_image = "<none>"
     forced_filename = "<none>"
-
+    if hasattr(sd_hijack_checkpoint, 'add'):
+        sd_hijack_checkpoint.add()
     pbar = tqdm.tqdm(total=steps - initial_step)
     try:
         for i in range((steps - initial_step) * gradient_step):
@@ -466,6 +467,8 @@ Last saved image: {html.escape(last_saved_image)}<br/>
         pbar.close()
         hypernetwork.eval()
         shared.parallel_processing_allowed = old_parallel_processing_allowed
+        if hasattr(sd_hijack_checkpoint, 'remove'):
+            sd_hijack_checkpoint.remove()
     report_statistics(loss_dict)
     filename = os.path.join(shared.cmd_opts.hypernetwork_dir, f'{hypernetwork_name}.pt')
     hypernetwork.optimizer_name = optimizer_name
@@ -755,7 +758,8 @@ def internal_clean_training(hypernetwork_name, data_root, log_directory,
     last_saved_file = "<none>"
     last_saved_image = "<none>"
     forced_filename = "<none>"
-
+    if hasattr(sd_hijack_checkpoint, 'add'):
+        sd_hijack_checkpoint.add()
     pbar = tqdm.tqdm(total=steps - initial_step)
     try:
         for i in range((steps - initial_step) * gradient_step):
@@ -930,6 +934,8 @@ Last saved image: {html.escape(last_saved_image)}<br/>
         pbar.close()
         hypernetwork.eval()
         shared.parallel_processing_allowed = old_parallel_processing_allowed
+        if hasattr(sd_hijack_checkpoint, 'remove'):
+            sd_hijack_checkpoint.remove()
         if shared.opts.training_enable_tensorboard:
             tensorboard_log_hyperparameter(tensorboard_writer, lr=learn_rate,
                                            GA_steps=gradient_step,

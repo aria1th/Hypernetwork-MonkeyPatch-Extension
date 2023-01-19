@@ -16,7 +16,7 @@ import scripts.xy_grid
 from modules.shared import opts
 try:
     from modules.hashes import sha256
-except ImportError or ModuleNotFoundError:
+except (ImportError, ModuleNotFoundError):
     print("modules.hashes is not found, will use backup module from extension!")
     from .hashes_backup import sha256
 

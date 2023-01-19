@@ -14,7 +14,7 @@ from .dataset import PersonalizedBase, PersonalizedDataLoader
 from ..scheduler import CosineAnnealingWarmUpRestarts
 from ..hnutil import optim_to
 
-from modules import shared, devices, sd_models, images, processing, sd_samplers, sd_hijack
+from modules import shared, devices, sd_models, images, processing, sd_samplers, sd_hijack, sd_hijack_checkpoint
 from modules.textual_inversion.image_embedding import caption_image_overlay, insert_image_data_embed, embedding_to_b64
 from modules.textual_inversion.learn_schedule import LearnRateScheduler
 from modules.textual_inversion.textual_inversion import save_embedding
@@ -299,6 +299,8 @@ def train_embedding(id_task, embedding_name, learn_rate, batch_size, gradient_st
     img_c = None
 
     pbar = tqdm.tqdm(total=steps - initial_step)
+    if hasattr(sd_hijack_checkpoint, 'add'):
+        sd_hijack_checkpoint.add()
     try:
         for i in range((steps - initial_step) * gradient_step):
             if scheduler.finished:
@@ -490,4 +492,6 @@ Last saved image: {html.escape(last_saved_image)}<br/>
         pbar.close()
         shared.sd_model.first_stage_model.to(devices.device)
         shared.parallel_processing_allowed = old_parallel_processing_allowed
+        if hasattr(sd_hijack_checkpoint, 'remove'):
+            sd_hijack_checkpoint.remove()
     return embedding, filename
