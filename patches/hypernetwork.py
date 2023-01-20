@@ -270,6 +270,7 @@ class Hypernetwork:
         self.optional_info = kwargs.get('optional_info', None)
         self.skip_connection = kwargs.get('skip_connection', False)
         self.upsample_linear = kwargs.get('upsample_linear', None)
+        self.training = False
         generation_seed = kwargs.get('generation_seed', None)
         normal_std = kwargs.get('normal_std', 0.01)
         if self.dropout_structure is None:
@@ -287,6 +288,7 @@ class Hypernetwork:
         self.eval()
 
     def weights(self, train=False):
+        self.training = train
         res = []
         for k, layers in self.layers.items():
             for layer in layers:
@@ -294,12 +296,14 @@ class Hypernetwork:
         return res
 
     def eval(self):
+        self.training = False
         for k, layers in self.layers.items():
             for layer in layers:
                 layer.eval()
                 layer.set_train(False)
 
     def train(self, mode=True):
+        self.training = mode
         for k, layers in self.layers.items():
             for layer in layers:
                 layer.set_train(mode)
