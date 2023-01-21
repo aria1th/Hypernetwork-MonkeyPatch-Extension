@@ -4,6 +4,8 @@ import os.path
 import torch
 
 from modules import devices, shared
+from .hnutil import find_self
+from .shared import version_flag
 
 lazy_load = False  # when this is enabled, HNs will be loaded when required.
 
@@ -78,6 +80,17 @@ class Forward:
 
     def __call__(self, *args, **kwargs):
         raise NotImplementedError
+
+    def set_multiplier(self, *args, **kwargs):
+        pass
+
+    def extra_name(self):
+        if version_flag:
+            return ""
+        found = find_self(self)
+        if found is not None:
+            return f" <hypernet:{found}:1.0>"
+        return f" <hypernet:{self.name}:1.0>"
 
     @staticmethod
     def parse(arg, name=None):

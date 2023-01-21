@@ -1,8 +1,8 @@
-import html
 import os
 
-from modules import shared, sd_hijack, devices
-from .hypernetwork import Hypernetwork, train_hypernetwork, load_hypernetwork
+from modules import shared
+from .hypernetwork import Hypernetwork, load_hypernetwork
+
 
 def create_hypernetwork_load(name, enable_sizes, overwrite_old, layer_structure=None, activation_func=None, weight_init=None, add_layer_norm=False, use_dropout=False, dropout_structure=None, optional_info=None,
                         weight_init_seed=None, normal_std=0.01, skip_connection=False):
@@ -36,8 +36,8 @@ def create_hypernetwork_load(name, enable_sizes, overwrite_old, layer_structure=
     )
     hypernet.save(fn)
     shared.reload_hypernetworks()
-    load_hypernetwork(fn)
-
+    hypernet = load_hypernetwork(fn)
+    assert hypernet is not None, f"Cannot load from {fn}!"
     return hypernet
 
 
@@ -76,27 +76,3 @@ def create_hypernetwork(name, enable_sizes, overwrite_old, layer_structure=None,
     shared.reload_hypernetworks()
 
     return name, f"Created: {fn}", ""
-
-def train_hypernetwork_ui(*args):
-
-    initial_hypernetwork = shared.loaded_hypernetwork
-
-    assert not shared.cmd_opts.lowvram, 'Training models with lowvram is not possible'
-
-    try:
-        sd_hijack.undo_optimizations()
-
-        hypernetwork, filename = train_hypernetwork(*args)
-
-        res = f"""
-Training {'interrupted' if shared.state.interrupted else 'finished'} at {hypernetwork.step} steps.
-Hypernetwork saved to {html.escape(filename)}
-"""
-        return res, ""
-    except Exception:
-        raise
-    finally:
-        shared.loaded_hypernetwork = initial_hypernetwork
-        shared.sd_model.cond_stage_model.to(devices.device)
-        shared.sd_model.first_stage_model.to(devices.device)
-        sd_hijack.apply_optimizations()

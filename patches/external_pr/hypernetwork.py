@@ -25,6 +25,18 @@ from .dataset import PersonalizedBase, PersonalizedDataLoader
 from ..ddpm_hijack import set_scheduler
 
 
+def set_accessible(obj):
+    setattr(shared, 'accessible_hypernetwork', obj)
+    if hasattr(shared, 'loaded_hypernetworks'):
+        shared.loaded_hypernetworks.clear()
+        shared.loaded_hypernetworks = [obj,]
+
+
+def remove_accessible():
+    delattr(shared, 'accessible_hypernetwork')
+    if hasattr(shared, 'loaded_hypernetworks'):
+        shared.loaded_hypernetworks.clear()
+
 def get_training_option(filename):
     print(filename)
     if os.path.exists(os.path.join(shared.cmd_opts.hypernetwork_dir, filename)) and os.path.isfile(
@@ -42,6 +54,40 @@ def get_training_option(filename):
         obj = json.load(file)
     return obj
 
+
+def prepare_training_hypernetwork(hypernetwork_name, learn_rate=0.1,use_adamw_parameter=False, **adamW_kwarg_dict):
+    """ returns hypernetwork object binded with optimizer"""
+    hypernetwork = load_hypernetwork(hypernetwork_name)
+    hypernetwork.to(devices.device)
+    assert hypernetwork is not None, f"Cannot load {hypernetwork_name}!"
+    if not isinstance(hypernetwork, Hypernetwork):
+        raise RuntimeError("Cannot perform training for Hypernetwork structure pipeline!")
+    set_accessible(hypernetwork)
+    weights = hypernetwork.weights(True)
+    hypernetwork_name = hypernetwork_name.rsplit('(', 1)[0]
+    filename = os.path.join(shared.cmd_opts.hypernetwork_dir, f'{hypernetwork_name}.pt')
+    # Here we use optimizer from saved HN, or we can specify as UI option.
+    if hypernetwork.optimizer_name in optimizer_dict:
+        if use_adamw_parameter:
+            if hypernetwork.optimizer_name != 'AdamW':
+                raise RuntimeError(f"Cannot use adamW paramters for optimizer {hypernetwork.optimizer_name}!")
+            optimizer = torch.optim.AdamW(params=weights, lr=learn_rate, **adamW_kwarg_dict)
+        else:
+            optimizer = optimizer_dict[hypernetwork.optimizer_name](params=weights, lr=learn_rate)
+        optimizer_name = hypernetwork.optimizer_name
+    else:
+        print(f"Optimizer type {hypernetwork.optimizer_name} is not defined!")
+        optimizer = torch.optim.AdamW(params=weights, lr=learn_rate, **adamW_kwarg_dict)
+        optimizer_name = 'AdamW'
+
+    if hypernetwork.optimizer_state_dict:  # This line must be changed if Optimizer type can be different from saved optimizer.
+        try:
+            optimizer.load_state_dict(hypernetwork.optimizer_state_dict)
+            optim_to(optimizer, devices.device)
+        except RuntimeError as e:
+            print("Cannot resume from saved optimizer!")
+            print(e)
+    return hypernetwork, optimizer, weights, optimizer_name
 
 def train_hypernetwork(id_task, hypernetwork_name, learn_rate, batch_size, gradient_step, data_root, log_directory,
                        training_width, training_height, steps, shuffle_tags, tag_drop_out, latent_sampling_method,
@@ -176,15 +222,11 @@ def train_hypernetwork(id_task, hypernetwork_name, learn_rate, batch_size, gradi
     validate_train_inputs(hypernetwork_name, learn_rate, batch_size, gradient_step, data_root,
                           template_file, steps, save_hypernetwork_every, create_image_every,
                           log_directory, name="hypernetwork")
-
-    load_hypernetwork(hypernetwork_name)
-    assert shared.loaded_hypernetwork is not None, f"Cannot load {hypernetwork_name}!"
-    if not isinstance(shared.loaded_hypernetwork, Hypernetwork):
-        raise RuntimeError("Cannot perform training for Hypernetwork structure pipeline!")
-
     shared.state.job = "train-hypernetwork"
     shared.state.textinfo = "Initializing hypernetwork training..."
     shared.state.job_count = steps
+    tmp_scheduler = LearnRateScheduler(learn_rate, steps, 0)
+    hypernetwork, optimizer, weights, optimizer_name = prepare_training_hypernetwork(hypernetwork_name, tmp_scheduler.learn_rate, use_adamw_parameter, **adamW_kwarg_dict)
 
     hypernetwork_name = hypernetwork_name.rsplit('(', 1)[0]
     filename = os.path.join(shared.cmd_opts.hypernetwork_dir, f'{hypernetwork_name}.pt')
@@ -204,7 +246,6 @@ def train_hypernetwork(id_task, hypernetwork_name, learn_rate, batch_size, gradi
     else:
         images_dir = None
 
-    hypernetwork = shared.loaded_hypernetwork
     checkpoint = sd_models.select_checkpoint()
 
     initial_step = hypernetwork.step or 0
@@ -251,29 +292,6 @@ def train_hypernetwork(id_task, hypernetwork_name, learn_rate, batch_size, gradi
         shared.sd_model.cond_stage_model.to(devices.cpu)
         shared.sd_model.first_stage_model.to(devices.cpu)
 
-    weights = hypernetwork.weights(True)
-
-    # Here we use optimizer from saved HN, or we can specify as UI option.
-    if hypernetwork.optimizer_name in optimizer_dict:
-        if use_adamw_parameter:
-            if hypernetwork.optimizer_name != 'AdamW':
-                raise RuntimeError(f"Cannot use adamW paramters for optimizer {hypernetwork.optimizer_name}!")
-            optimizer = torch.optim.AdamW(params=weights, lr=scheduler.learn_rate, **adamW_kwarg_dict)
-        else:
-            optimizer = optimizer_dict[hypernetwork.optimizer_name](params=weights, lr=scheduler.learn_rate)
-        optimizer_name = hypernetwork.optimizer_name
-    else:
-        print(f"Optimizer type {hypernetwork.optimizer_name} is not defined!")
-        optimizer = torch.optim.AdamW(params=weights, lr=scheduler.learn_rate, **adamW_kwarg_dict)
-        optimizer_name = 'AdamW'
-
-    if hypernetwork.optimizer_state_dict:  # This line must be changed if Optimizer type can be different from saved optimizer.
-        try:
-            optimizer.load_state_dict(hypernetwork.optimizer_state_dict)
-            optim_to(optimizer, devices.device)
-        except RuntimeError as e:
-            print("Cannot resume from saved optimizer!")
-            print(e)
     if use_beta_scheduler:
         scheduler_beta = CosineAnnealingWarmUpRestarts(optimizer=optimizer, first_cycle_steps=beta_repeat_epoch,
                                                        cycle_mult=epoch_mult, max_lr=scheduler.learn_rate,
@@ -421,7 +439,8 @@ def train_hypernetwork(id_task, hypernetwork_name, learn_rate, batch_size, gradi
                     )
 
                     if preview_from_txt2img:
-                        p.prompt = preview_prompt
+                        p.prompt = preview_prompt + hypernetwork.extra_name()
+                        print(p.prompt)
                         p.negative_prompt = preview_negative_prompt
                         p.steps = preview_steps
                         p.sampler_name = sd_samplers.samplers[preview_sampler_index].name
@@ -430,7 +449,7 @@ def train_hypernetwork(id_task, hypernetwork_name, learn_rate, batch_size, gradi
                         p.width = preview_width
                         p.height = preview_height
                     else:
-                        p.prompt = batch.cond_text[0]
+                        p.prompt = batch.cond_text[0]+ hypernetwork.extra_name()
                         p.steps = 20
                         p.width = training_width
                         p.height = training_height
@@ -465,6 +484,7 @@ def train_hypernetwork(id_task, hypernetwork_name, learn_rate, batch_size, gradi
                                                                              forced_filename=forced_filename,
                                                                              save_to_dirs=False)
                         last_saved_image += f", prompt: {preview_text}"
+                    set_accessible(hypernetwork)
 
                 shared.state.job_no = hypernetwork.step
 
@@ -487,6 +507,7 @@ Last saved image: {html.escape(last_saved_image)}<br/>
         if hasattr(sd_hijack_checkpoint, 'remove'):
             sd_hijack_checkpoint.remove()
         set_scheduler(-1, False, False)
+        remove_accessible()
     report_statistics(loss_dict)
     filename = os.path.join(shared.cmd_opts.hypernetwork_dir, f'{hypernetwork_name}.pt')
     hypernetwork.optimizer_name = optimizer_name
@@ -536,11 +557,11 @@ def internal_clean_training(hypernetwork_name, data_root, log_directory,
                                                 dropout_structure, optional_info, weight_init_seed, normal_std,
                                                 skip_connection)
     else:
-        load_hypernetwork(hypernetwork_name)
+        hypernetwork = load_hypernetwork(hypernetwork_name)
         hypernetwork_name = hypernetwork_name.rsplit('(', 1)[0] + setting_suffix
-        shared.loaded_hypernetwork.save(os.path.join(shared.cmd_opts.hypernetwork_dir, f"{hypernetwork_name}.pt"))
+        hypernetwork.save(os.path.join(shared.cmd_opts.hypernetwork_dir, f"{hypernetwork_name}.pt"))
         shared.reload_hypernetworks()
-        load_hypernetwork(hypernetwork_name)
+        hypernetwork = load_hypernetwork(hypernetwork_name)
     if load_training_options != '':
         dump: dict = get_training_option(load_training_options)
         if dump and dump is not None:
@@ -660,11 +681,11 @@ def internal_clean_training(hypernetwork_name, data_root, log_directory,
     validate_train_inputs(hypernetwork_name, learn_rate, batch_size, gradient_step, data_root,
                           template_file, steps, save_hypernetwork_every, create_image_every,
                           log_directory, name="hypernetwork")
-    load_hypernetwork(hypernetwork_name)
-    assert shared.loaded_hypernetwork is not None, f"Cannot load {hypernetwork_name}!"
-    if not isinstance(shared.loaded_hypernetwork, Hypernetwork):
+    hypernetwork.to(devices.device)
+    assert hypernetwork is not None, f"Cannot load {hypernetwork_name}!"
+    if not isinstance(hypernetwork, Hypernetwork):
         raise RuntimeError("Cannot perform training for Hypernetwork structure pipeline!")
-
+    set_accessible(hypernetwork)
     shared.state.job = "train-hypernetwork"
     shared.state.textinfo = "Initializing hypernetwork training..."
     shared.state.job_count = steps
@@ -687,7 +708,6 @@ def internal_clean_training(hypernetwork_name, data_root, log_directory,
     else:
         images_dir = None
 
-    hypernetwork = shared.loaded_hypernetwork
     checkpoint = sd_models.select_checkpoint()
 
     initial_step = hypernetwork.step or 0
@@ -711,7 +731,6 @@ def internal_clean_training(hypernetwork_name, data_root, log_directory,
         shared.sd_model.first_stage_model.requires_grad_(False)
         torch.cuda.empty_cache()
     pin_memory = shared.opts.pin_memory
-
     ds = PersonalizedBase(data_root=data_root, width=training_width,
                           height=training_height,
                           repeats=shared.opts.training_image_repeats_per_epoch,
@@ -755,10 +774,10 @@ def internal_clean_training(hypernetwork_name, data_root, log_directory,
     if hypernetwork.optimizer_state_dict:  # This line must be changed if Optimizer type can be different from saved optimizer.
         try:
             optimizer.load_state_dict(hypernetwork.optimizer_state_dict)
-            optim_to(optimizer, devices.device)
         except RuntimeError as e:
             print("Cannot resume from saved optimizer!")
             print(e)
+    optim_to(optimizer, devices.device)
     if use_beta_scheduler:
         scheduler_beta = CosineAnnealingWarmUpRestarts(optimizer=optimizer, first_cycle_steps=beta_repeat_epoch,
                                                        cycle_mult=epoch_mult, max_lr=scheduler.learn_rate,
@@ -895,7 +914,6 @@ def internal_clean_training(hypernetwork_name, data_root, log_directory,
                     hypernetwork.eval()
                     if move_optimizer:
                         optim_to(optimizer, devices.cpu)
-                        gc.collect()
                     shared.sd_model.cond_stage_model.to(devices.device)
                     shared.sd_model.first_stage_model.to(devices.device)
 
@@ -906,7 +924,7 @@ def internal_clean_training(hypernetwork_name, data_root, log_directory,
                     )
 
                     if preview_from_txt2img:
-                        p.prompt = preview_prompt
+                        p.prompt = preview_prompt + hypernetwork.extra_name()
                         p.negative_prompt = preview_negative_prompt
                         p.steps = preview_steps
                         p.sampler_name = sd_samplers.samplers[preview_sampler_index].name
@@ -915,7 +933,7 @@ def internal_clean_training(hypernetwork_name, data_root, log_directory,
                         p.width = preview_width
                         p.height = preview_height
                     else:
-                        p.prompt = batch.cond_text[0]
+                        p.prompt = batch.cond_text[0]+ hypernetwork.extra_name()
                         p.steps = 20
                         p.width = training_width
                         p.height = training_height
@@ -950,6 +968,7 @@ def internal_clean_training(hypernetwork_name, data_root, log_directory,
                                                                              forced_filename=forced_filename,
                                                                              save_to_dirs=False)
                         last_saved_image += f", prompt: {preview_text}"
+                    set_accessible(hypernetwork)
 
                 shared.state.job_no = hypernetwork.step
 
@@ -970,6 +989,7 @@ Last saved image: {html.escape(last_saved_image)}<br/>
         hypernetwork.eval()
         set_scheduler(-1, False, False)
         shared.parallel_processing_allowed = old_parallel_processing_allowed
+        remove_accessible()
         if hasattr(sd_hijack_checkpoint, 'remove'):
             sd_hijack_checkpoint.remove()
         if shared.opts.training_enable_tensorboard:
