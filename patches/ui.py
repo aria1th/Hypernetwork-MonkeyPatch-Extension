@@ -36,8 +36,8 @@ def create_hypernetwork_load(name, enable_sizes, overwrite_old, layer_structure=
     )
     hypernet.save(fn)
     shared.reload_hypernetworks()
-    hypernet = load_hypernetwork(fn)
-    assert hypernet is not None, f"Cannot load from {fn}!"
+    hypernet = load_hypernetwork(name)
+    assert hypernet is not None, f"Cannot load from {name}!"
     return hypernet
 
 
