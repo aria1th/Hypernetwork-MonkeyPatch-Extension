@@ -39,8 +39,12 @@ training_scheduler = Scheduler(cycle_step=-1, repeat=False)
 
 def get_current(value, step=None):
     if step is None:
-        if hasattr(shared.loaded_hypernetwork, 'step') and shared.loaded_hypernetwork.training and shared.loaded_hypernetwork.step is not None:
-            return training_scheduler(value, shared.loaded_hypernetwork.step)
+        if hasattr(shared, 'accessible_hypernetwork'):
+            hypernetwork = shared.accessible_hypernetwork
+        else:
+            return value
+        if hasattr(hypernetwork, 'step') and hypernetwork.training and hypernetwork.step is not None:
+            return training_scheduler(value, hypernetwork.step)
         return value
     return max(1, training_scheduler(value, step))
 

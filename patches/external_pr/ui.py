@@ -5,7 +5,6 @@ import random
 
 from modules import shared, sd_hijack, devices
 from modules.call_queue import wrap_gradio_call
-from modules.hypernetworks.ui import keys
 from modules.paths import script_path
 from modules.ui import create_refresh_button, gr_show
 from webui import wrap_gradio_gpu_call
@@ -15,8 +14,11 @@ import gradio as gr
 
 
 def train_hypernetwork_ui(*args):
-    initial_hypernetwork = shared.loaded_hypernetwork
-
+    initial_hypernetwork = None
+    if hasattr(shared, 'loaded_hypernetwork'):
+        initial_hypernetwork = shared.loaded_hypernetwork
+    else:
+        shared.loaded_hypernetworks = []
     assert not shared.cmd_opts.lowvram, 'Training models with lowvram is not possible'
 
     try:
@@ -32,14 +34,21 @@ Hypernetwork saved to {html.escape(filename)}
     except Exception:
         raise
     finally:
-        shared.loaded_hypernetwork = initial_hypernetwork
+        if hasattr(shared, 'loaded_hypernetwork'):
+            shared.loaded_hypernetwork = initial_hypernetwork
+        else:
+            shared.loaded_hypernetworks = []
         shared.sd_model.cond_stage_model.to(devices.device)
         shared.sd_model.first_stage_model.to(devices.device)
         sd_hijack.apply_optimizations()
 
 
 def train_hypernetwork_ui_tuning(*args):
-    initial_hypernetwork = shared.loaded_hypernetwork
+    initial_hypernetwork = None
+    if hasattr(shared, 'loaded_hypernetwork'):
+        initial_hypernetwork = shared.loaded_hypernetwork
+    else:
+        shared.loaded_hypernetworks = []
 
     assert not shared.cmd_opts.lowvram, 'Training models with lowvram is not possible'
 
@@ -55,7 +64,10 @@ Training {'interrupted' if shared.state.interrupted else 'finished'}.
     except Exception:
         raise
     finally:
-        shared.loaded_hypernetwork = initial_hypernetwork
+        if hasattr(shared, 'loaded_hypernetwork'):
+            shared.loaded_hypernetwork = initial_hypernetwork
+        else:
+            shared.loaded_hypernetworks = []
         shared.sd_model.cond_stage_model.to(devices.device)
         shared.sd_model.first_stage_model.to(devices.device)
         sd_hijack.apply_optimizations()

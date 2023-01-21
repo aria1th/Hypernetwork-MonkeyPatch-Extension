@@ -1,15 +1,10 @@
-import datetime
 import glob
-import html
 import inspect
 import os
 import sys
 import traceback
-from collections import defaultdict, deque
-from statistics import stdev, mean
 
 import torch
-import tqdm
 from torch.nn.init import normal_, xavier_uniform_, zeros_, xavier_normal_, kaiming_uniform_, kaiming_normal_
 
 import scripts.xy_grid
@@ -20,16 +15,10 @@ except (ImportError, ModuleNotFoundError):
     print("modules.hashes is not found, will use backup module from extension!")
     from .hashes_backup import sha256
 
-from .scheduler import CosineAnnealingWarmUpRestarts
-
 import modules.hypernetworks.hypernetwork
-from modules import devices, shared, sd_models, processing, sd_samplers, generation_parameters_copypaste
-from .hnutil import parse_dropout_structure, optim_to
-from modules.hypernetworks.hypernetwork import report_statistics, save_hypernetwork, stack_conds, optimizer_dict
-from modules.textual_inversion import textual_inversion
-from .dataset import PersonalizedBase
-from modules.textual_inversion.learn_schedule import LearnRateScheduler
-
+from modules import devices, shared, sd_models, processing, generation_parameters_copypaste
+from .hnutil import parse_dropout_structure, find_self
+from .shared import version_flag
 
 def init_weight(layer, weight_init="Normal", normal_std=0.01, activation_func="relu"):
     w, b = layer.weight.data, layer.bias.data
@@ -217,10 +206,10 @@ class HypernetworkModule(torch.nn.Module):
                 resnet_result = self.linear(x)
                 residual = resnet_result - x
                 if multiplier is None or not isinstance(multiplier, (int, float)):
-                    multiplier = HypernetworkModule.multiplier
-                return x + multiplier * residual # interpolate
+                    multiplier = self.multiplier if not version_flag else HypernetworkModule.multiplier
+                return x + multiplier * residual  # interpolate
         if multiplier is None or not isinstance(multiplier, (int, float)):
-            return x + self.linear(x) * (HypernetworkModule.multiplier if not self.training else 1)
+            return x + self.linear(x) * ((self.multiplier if not version_flag else HypernetworkModule.multiplier) if not self.training else 1)
         return x + self.linear(x) * multiplier
 
     def trainables(self, train=False):
@@ -317,6 +306,14 @@ class Hypernetwork:
         sha256v = sha256(self.filename, f'hypernet/{self.name}')
         return sha256v[0:10]
 
+    def extra_name(self):
+        if version_flag:
+            return ""
+        found = find_self(self)
+        if found is not None:
+            return f" <hypernet:{found}:1.0>"
+        return f" <hypernet:{self.name}:1.0>"
+
     def save(self, filename):
         state_dict = {}
         optimizer_saved_dict = {}
@@ -412,9 +409,18 @@ class Hypernetwork:
         self.eval()
 
     def to(self, device):
-        for values in self.layers.values():
-            values[0].to(device)
-            values[1].to(device)
+        for k, layers in self.layers.items():
+            for layer in layers:
+                layer.to(device)
+
+        return self
+
+    def set_multiplier(self, multiplier):
+        for k, layers in self.layers.items():
+            for layer in layers:
+                layer.multiplier = multiplier
+
+        return self
 
     def __call__(self, context, *args, **kwargs):
         return self.forward(context, *args, **kwargs)
@@ -436,9 +442,13 @@ def list_hypernetworks(path):
     res = {}
     for filename in sorted(glob.iglob(os.path.join(path, '**/*.pt'), recursive=True)):
         name = os.path.splitext(os.path.basename(filename))[0]
+        idx = 0
+        while name in res:
+            idx += 1
+            name = name + f"({idx})"
         # Prevent a hypothetical "None.pt" from being listed.
         if name != "None":
-            res[name+ f"({sd_models.model_hash(filename)})"] = filename
+            res[name] = filename
     for filename in glob.iglob(os.path.join(path, '**/*.hns'), recursive=True):
         name = os.path.splitext(os.path.basename(filename))[0]
         if name != "None":
@@ -451,7 +461,10 @@ def find_closest_first(keyset, target):
             return keys
     return None
 
+
+
 def load_hypernetwork(filename):
+    hypernetwork = None
     path = shared.hypernetworks.get(filename, None)
     if path is None:
         filename = find_closest_first(shared.hypernetworks.keys(), filename)
@@ -462,8 +475,12 @@ def load_hypernetwork(filename):
         print(f"Loading hypernetwork {filename}")
         if path.endswith(".pt"):
             try:
-                shared.loaded_hypernetwork = Hypernetwork()
-                shared.loaded_hypernetwork.load(path)
+                hypernetwork = Hypernetwork()
+                hypernetwork.load(path)
+                if hasattr(shared, 'loaded_hypernetwork'):
+                    shared.loaded_hypernetwork = hypernetwork
+                else:
+                    return hypernetwork
 
             except Exception:
                 print(f"Error loading hypernetwork {path}", file=sys.stderr)
@@ -472,18 +489,23 @@ def load_hypernetwork(filename):
             # Load Hypernetwork processing
             try:
                 from .hypernetworks import load as load_hns
-                shared.loaded_hypernetwork = load_hns(path)
-                print(f"Loaded Hypernetwork Structure {path}")
+                if hasattr(shared, 'loaded_hypernetwork'):
+                    shared.loaded_hypernetwork = load_hns(path)
+                else:
+                    hypernetwork = load_hns(path)
+                    print(f"Loaded Hypernetwork Structure {path}")
+                    return hypernetwork
             except Exception:
                 print(f"Error loading hypernetwork processing file {path}", file=sys.stderr)
                 print(traceback.format_exc(), file=sys.stderr)
         else:
             print(f"Tried to load unknown file extension: {filename}")
     else:
-        if shared.loaded_hypernetwork is not None:
-            print(f"Unloading hypernetwork")
-
-        shared.loaded_hypernetwork = None
+        if hasattr(shared, 'loaded_hypernetwork'):
+            if shared.loaded_hypernetwork is not None:
+                print(f"Unloading hypernetwork")
+                shared.loaded_hypernetwork = None
+    return hypernetwork
 
 
 def apply_hypernetwork(hypernetwork, context, layer=None):
@@ -504,265 +526,31 @@ def apply_hypernetwork(hypernetwork, context, layer=None):
     return context_k, context_v
 
 
-def train_hypernetwork(hypernetwork_name, learn_rate, batch_size, data_root, log_directory, training_width,
-                       training_height, steps, create_image_every, save_hypernetwork_every, template_file,
-                       preview_from_txt2img, preview_prompt, preview_negative_prompt, preview_steps,
-                       preview_sampler_index, preview_cfg_scale, preview_seed, preview_width, preview_height,
-                       use_beta_scheduler=False, beta_repeat_epoch=4000,epoch_mult=1, warmup =10, min_lr=1e-7, gamma_rate=1):
-    # images allows training previews to have infotext. Importing it at the top causes a circular import problem.
-    from modules import images
-    try:
-        if use_beta_scheduler:
-            print("Using Beta Scheduler")
-            beta_repeat_epoch = int(beta_repeat_epoch)
-            assert beta_repeat_epoch > 0, f"Cannot use too small cycle {beta_repeat_epoch}!"
-            min_lr = float(min_lr)
-            assert min_lr < 1, f"Cannot use minimum lr with {min_lr}!"
-            gamma_rate = float(gamma_rate)
-            print(f"Using learn rate decay(per cycle) of {gamma_rate}")
-            assert 0 <= gamma_rate <= 1, f"Cannot use gamma rate with {gamma_rate}!"
-            epoch_mult = int(float(epoch_mult))
-            assert 1 <= epoch_mult, "Cannot use epoch multiplier smaller than 1!"
-            warmup = int(warmup)
-            assert warmup >= 1, "Warmup epoch should be larger than 0!"
-        else:
-            beta_repeat_epoch = 4000
-            epoch_mult=1
-            warmup=10
-            min_lr=1e-7
-            gamma_rate=1
-    except ValueError:
-        raise RuntimeError("Cannot use advanced LR scheduler settings!")
-    save_hypernetwork_every = save_hypernetwork_every or 0
-    create_image_every = create_image_every or 0
-    textual_inversion.validate_train_inputs(hypernetwork_name, learn_rate, batch_size, 1, template_file, steps,
-                                            save_hypernetwork_every, create_image_every, log_directory,
-                                            name="hypernetwork")
+def apply_single_hypernetwork(hypernetwork, context_k, context_v, layer=None):
+    if hypernetwork is None:
+        return context_k, context_v
+    if isinstance(hypernetwork, Hypernetwork):
+        hypernetwork_layers = (hypernetwork.layers if hypernetwork is not None else {}).get(context_k.shape[2], None)
+        if hypernetwork_layers is None:
+            return context_k, context_v
+        if layer is not None:
+            layer.hyper_k = hypernetwork_layers[0]
+            layer.hyper_v = hypernetwork_layers[1]
 
-    load_hypernetwork(hypernetwork_name)
-    assert shared.loaded_hypernetwork is not None, f"Cannot load {hypernetwork_name}!"
-    if not isinstance(shared.loaded_hypernetwork, Hypernetwork):
-        raise RuntimeError("Cannot perform training for Hypernetwork structure pipeline!")
-    shared.state.textinfo = "Initializing hypernetwork training..."
-    shared.state.job_count = steps
-    losses_list = []
-    hypernetwork_name = hypernetwork_name.rsplit('(', 1)[0]
-    filename = os.path.join(shared.cmd_opts.hypernetwork_dir, f'{hypernetwork_name}.pt')
+        context_k = hypernetwork_layers[0](context_k)
+        context_v = hypernetwork_layers[1](context_v)
+        return context_k, context_v
+    context_k, context_v = hypernetwork(context_k, context_v, layer=layer)
+    return context_k, context_v
 
-    log_directory = os.path.join(log_directory, datetime.datetime.now().strftime("%Y-%m-%d"), hypernetwork_name)
-    unload = shared.opts.unload_models_when_training
-
-    if save_hypernetwork_every > 0:
-        hypernetwork_dir = os.path.join(log_directory, "hypernetworks")
-        os.makedirs(hypernetwork_dir, exist_ok=True)
-    else:
-        hypernetwork_dir = None
-
-    if create_image_every > 0:
-        images_dir = os.path.join(log_directory, "images")
-        os.makedirs(images_dir, exist_ok=True)
-    else:
-        images_dir = None
-
-    hypernetwork = shared.loaded_hypernetwork
-    checkpoint = sd_models.select_checkpoint()
-
-    ititial_step = hypernetwork.step or 0
-    if ititial_step >= steps:
-        shared.state.textinfo = f"Model has already been trained beyond specified max steps"
-        return hypernetwork, filename
-
-    scheduler = LearnRateScheduler(learn_rate, steps, ititial_step)
-    # dataset loading may take a while, so input validations and early returns should be done before this
-    shared.state.textinfo = f"Preparing dataset from {html.escape(data_root)}..."
-    with torch.autocast("cuda"):
-        ds = PersonalizedBase(data_root=data_root, width=training_width,
-                                                                height=training_height,
-                                                                repeats=shared.opts.training_image_repeats_per_epoch,
-                                                                placeholder_token=hypernetwork_name,
-                                                                model=shared.sd_model, device=devices.device,
-                                                                template_file=template_file, include_cond=True,
-                                                                batch_size=batch_size)
-
-    if unload:
-        shared.sd_model.cond_stage_model.to(devices.cpu)
-        shared.sd_model.first_stage_model.to(devices.cpu)
-
-    size = len(ds.indexes)
-    loss_dict = defaultdict(lambda: deque(maxlen=1024))
-    losses = torch.zeros((size,))
-    previous_mean_losses = [0]
-    previous_mean_loss = 0
-    print("Mean loss of {} elements".format(size))
-
-    weights = hypernetwork.weights(True)
-
-    # Here we use optimizer from saved HN, or we can specify as UI option.
-    if hypernetwork.optimizer_name in optimizer_dict:
-        optimizer = optimizer_dict[hypernetwork.optimizer_name](params=weights, lr=scheduler.learn_rate)
-        optimizer_name = hypernetwork.optimizer_name
-    else:
-        print(f"Optimizer type {hypernetwork.optimizer_name} is not defined!")
-        optimizer: torch.optim.Optimizer = torch.optim.AdamW(params=weights, lr=scheduler.learn_rate)
-        optimizer_name = 'AdamW'
-
-    if hypernetwork.optimizer_state_dict:  # This line must be changed if Optimizer type can be different from saved optimizer.
-        try:
-            optimizer.load_state_dict(hypernetwork.optimizer_state_dict)
-        except RuntimeError as e:
-            print("Cannot resume from saved optimizer!")
-            print(e)
-
-    scheduler_beta = CosineAnnealingWarmUpRestarts(optimizer=optimizer, first_cycle_steps=beta_repeat_epoch, cycle_mult=epoch_mult, max_lr=scheduler.learn_rate,warmup_steps=warmup, min_lr=min_lr, gamma=gamma_rate)
-    scheduler_beta.last_epoch =hypernetwork.step-1
-    steps_without_grad = 0
-
-    last_saved_file = "<none>"
-    last_saved_image = "<none>"
-    forced_filename = "<none>"
-
-    pbar = tqdm.tqdm(enumerate(ds), total=steps - ititial_step)
-    for i, entries in pbar:
-        hypernetwork.step = i + ititial_step
-        if use_beta_scheduler:
-            scheduler_beta.step(hypernetwork.step)
-        if len(loss_dict) > 0:
-            previous_mean_losses = [i[-1] for i in loss_dict.values()]
-            previous_mean_loss = mean(previous_mean_losses)
-        if not use_beta_scheduler:
-            scheduler.apply(optimizer, hypernetwork.step)
-        if i + ititial_step > steps:
-            break
-
-        if shared.state.interrupted:
-            break
-
-        with torch.autocast("cuda"):
-            c = stack_conds([entry.cond for entry in entries]).to(devices.device)
-            # c = torch.vstack([entry.cond for entry in entries]).to(devices.device)
-            x = torch.stack([entry.latent for entry in entries]).to(devices.device)
-            loss_infos = shared.sd_model(x, c)[1]
-            loss = loss_infos[
-                'val/loss_simple']  # + loss_infos['val/loss_vlb'] * 0.4 #its 'prior class preserving' loss
-            del x
-            del c
-
-            losses[hypernetwork.step % losses.shape[0]] = loss.item()
-            losses_list.append(loss.item())
-            for entry in entries:
-                loss_dict[entry.filename].append(loss.item())
-            optimizer.zero_grad()
-            weights[0].grad = None
-            loss.backward()
-
-            if weights[0].grad is None:
-                steps_without_grad += 1
-            else:
-                steps_without_grad = 0
-            assert steps_without_grad < 10, 'no gradient found for the trained weight after backward() for 10 steps in a row; this is a bug; training cannot continue'
-            optimizer.step()
-
-        steps_done = hypernetwork.step + 1
-
-        if torch.isnan(losses[hypernetwork.step % losses.shape[0]]):
-            raise RuntimeError("Loss diverged.")
-
-        if len(previous_mean_losses) > 1:
-            std = stdev(previous_mean_losses)
-        else:
-            std = 0
-        dataset_loss_info = f"dataset loss:{mean(previous_mean_losses):.3f}" + u"\u00B1" + f"({std / (len(previous_mean_losses) ** 0.5):.3f})"
-        pbar.set_description(dataset_loss_info)
-
-        if hypernetwork_dir is not None and steps_done % save_hypernetwork_every == 0:
-            # Before saving, change name to match current checkpoint.
-            hypernetwork_name_every = f'{hypernetwork_name}-{steps_done}'
-            last_saved_file = os.path.join(hypernetwork_dir, f'{hypernetwork_name_every}.pt')
-            hypernetwork.optimizer_name = optimizer_name
-            if shared.opts.save_optimizer_state:
-                hypernetwork.optimizer_state_dict = optimizer.state_dict()
-            save_hypernetwork(hypernetwork, checkpoint, hypernetwork_name, last_saved_file)
-            hypernetwork.optimizer_state_dict = None  # dereference it after saving, to save memory.
-
-        textual_inversion.write_loss(log_directory, "hypernetwork_loss.csv", hypernetwork.step, len(ds), {
-            "loss": f"{previous_mean_loss:.7f}",
-            "learn_rate": optimizer.param_groups[0]['lr']
-        })
-
-        if images_dir is not None and steps_done % create_image_every == 0:
-            forced_filename = f'{hypernetwork_name}-{steps_done}'
-            last_saved_image = os.path.join(images_dir, forced_filename)
-            optimizer.zero_grad()
-            optim_to(optimizer, devices.cpu)
-            shared.sd_model.cond_stage_model.to(devices.device)
-            shared.sd_model.first_stage_model.to(devices.device)
-
-            p = processing.StableDiffusionProcessingTxt2Img(
-                sd_model=shared.sd_model,
-                do_not_save_grid=True,
-                do_not_save_samples=True,
-            )
-
-            if preview_from_txt2img:
-                p.prompt = preview_prompt
-                p.negative_prompt = preview_negative_prompt
-                p.steps = preview_steps
-                p.sampler_name = sd_samplers.samplers[preview_sampler_index].name
-                p.cfg_scale = preview_cfg_scale
-                p.seed = preview_seed
-                p.width = preview_width
-                p.height = preview_height
-            else:
-                p.prompt = entries[0].cond_text
-                p.steps = 20
-
-            preview_text = p.prompt
-
-            processed = processing.process_images(p)
-            image = processed.images[0] if len(processed.images) > 0 else None
-
-            if unload:
-                shared.sd_model.cond_stage_model.to(devices.cpu)
-                shared.sd_model.first_stage_model.to(devices.cpu)
-
-            if image is not None:
-                shared.state.current_image = image
-                last_saved_image, last_text_info = images.save_image(image, images_dir, "", p.seed, p.prompt,
-                                                                     shared.opts.samples_format, processed.infotexts[0],
-                                                                     p=p, forced_filename=forced_filename,
-                                                                     save_to_dirs=False)
-                last_saved_image += f", prompt: {preview_text}"
-            optim_to(optimizer, devices.device)
-
-        shared.state.job_no = hypernetwork.step
-
-        shared.state.textinfo = f"""
-<p>
-Loss: {previous_mean_loss:.7f}<br/>
-Step: {hypernetwork.step}<br/>
-Last prompt: {html.escape(entries[0].cond_text)}<br/>
-Last saved hypernetwork: {html.escape(last_saved_file)}<br/>
-Last saved image: {html.escape(last_saved_image)}<br/>
-</p>
-"""
-
-    report_statistics(loss_dict)
-
-    filename = os.path.join(shared.cmd_opts.hypernetwork_dir, f'{hypernetwork_name}.pt')
-    hypernetwork.optimizer_name = optimizer_name
-    if shared.opts.save_optimizer_state:
-        hypernetwork.optimizer_state_dict = optimizer.state_dict()
-    save_hypernetwork(hypernetwork, checkpoint, hypernetwork_name, filename)
-    del optimizer
-    hypernetwork.optimizer_state_dict = None  # dereference it after saving, to save memory.
-    hypernetwork.eval()
-    return hypernetwork, filename
 
 def apply_strength(value=None):
     HypernetworkModule.multiplier = value if value is not None else shared.opts.sd_hypernetwork_strength
 
+
 def apply_hypernetwork_strength(p, x, xs):
     apply_strength(x)
+
 
 def create_infotext(p, all_prompts, all_seeds, all_subseeds, comments=None, iteration=0, position_in_batch=0):
     index = position_in_batch + iteration * p.batch_size
@@ -778,9 +566,6 @@ def create_infotext(p, all_prompts, all_seeds, all_subseeds, comments=None, iter
         "Size": f"{p.width}x{p.height}",
         "Model hash": getattr(p, 'sd_model_hash', None if not opts.add_model_hash_to_info or not shared.sd_model.sd_model_hash else shared.sd_model.sd_model_hash),
         "Model": (None if not opts.add_model_name_to_info or not shared.sd_model.sd_checkpoint_info.model_name else shared.sd_model.sd_checkpoint_info.model_name.replace(',', '').replace(':', '')),
-        "Hypernet": (None if shared.loaded_hypernetwork is None or not hasattr(shared.loaded_hypernetwork, 'name') else shared.loaded_hypernetwork.name),
-        "Hypernet hash": (None if shared.loaded_hypernetwork is None or not hasattr(shared.loaded_hypernetwork, 'filename') else sd_models.model_hash(shared.loaded_hypernetwork.filename)),
-        "Hypernet strength": (None if shared.loaded_hypernetwork is None or shared.opts.sd_hypernetwork_strength >= 1 else shared.opts.sd_hypernetwork_strength),
         "Batch size": (None if p.batch_size < 2 else p.batch_size),
         "Batch pos": (None if p.batch_size < 2 else position_in_batch),
         "Variation seed": (None if p.subseed_strength == 0 else all_subseeds[index]),
@@ -801,13 +586,19 @@ def create_infotext(p, all_prompts, all_seeds, all_subseeds, comments=None, iter
 
     return f"{all_prompts[index]}{negative_prompt_text}\n{generation_params_text}".strip()
 
+
 modules.hypernetworks.hypernetwork.list_hypernetworks = list_hypernetworks
 modules.hypernetworks.hypernetwork.load_hypernetwork = load_hypernetwork
-modules.hypernetworks.hypernetwork.apply_hypernetwork = apply_hypernetwork
-modules.hypernetworks.hypernetwork.apply_strength = apply_strength
+if hasattr(modules.hypernetworks.hypernetwork, 'apply_hypernetwork'):
+    modules.hypernetworks.hypernetwork.apply_hypernetwork = apply_hypernetwork
+else:
+    modules.hypernetworks.hypernetwork.apply_single_hypernetwork = apply_single_hypernetwork
+if hasattr(modules.hypernetworks.hypernetwork, 'apply_strength'):
+    modules.hypernetworks.hypernetwork.apply_strength = apply_strength
 modules.hypernetworks.hypernetwork.Hypernetwork = Hypernetwork
 modules.hypernetworks.hypernetwork.HypernetworkModule = HypernetworkModule
-scripts.xy_grid.apply_hypernetwork_strength = apply_hypernetwork_strength
+if hasattr(scripts.xy_grid, 'apply_hypernetwork_strength'):
+    scripts.xy_grid.apply_hypernetwork_strength = apply_hypernetwork_strength
 
 # Fix calculating hash for multiple hns
 processing.create_infotext = create_infotext

@@ -1,5 +1,14 @@
 import torch
 
+import modules.shared
+
+
+def find_self(self):
+    for k, v in modules.shared.hypernetworks.items():
+        if v == self:
+            return k
+    return None
+
 
 def optim_to(optim:torch.optim.Optimizer, device="cpu"):
     def inplace_move(obj: torch.Tensor, target):
