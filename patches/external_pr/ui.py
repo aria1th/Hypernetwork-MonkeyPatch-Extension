@@ -67,7 +67,8 @@ def save_training_setting(*args):
     template_file, use_beta_scheduler, beta_repeat_epoch, epoch_mult, warmup, min_lr, \
     gamma_rate, use_beta_adamW_checkbox, save_when_converge, create_when_converge, \
     adamw_weight_decay, adamw_beta_1, adamw_beta_2, adamw_eps, show_gradient_clip_checkbox, \
-    gradient_clip_opt, optional_gradient_clip_value, optional_gradient_norm_type, latent_sampling_std = args
+    gradient_clip_opt, optional_gradient_clip_value, optional_gradient_norm_type, latent_sampling_std,\
+    noise_training_scheduler_enabled, noise_training_scheduler_repeat, noise_training_scheduler_cycle = args
     dumped_locals = locals()
     dumped_locals.pop('args')
     filename = (str(random.randint(0, 1024)) if save_file_name == '' else save_file_name) + '_train_' + '.json'
@@ -121,6 +122,8 @@ def on_train_gamma_tab(params=None):
                 label='Show advanced adamW parameter options)')
             show_gradient_clip_checkbox = gr.Checkbox(
                 label='Show Gradient Clipping Options(for both)')
+            show_noise_options = gr.Checkbox(
+                label='Show Noise Scheduler Options(for both)')
         with gr.Row(visible=False) as adamW_options:
             adamw_weight_decay = gr.Textbox(label="AdamW weight decay parameter", placeholder="default = 0.01",
                                             value="0.01")
@@ -146,7 +149,16 @@ def on_train_gamma_tab(params=None):
             gradient_clip_opt = gr.Radio(label="Gradient Clipping Options", choices=["None", "limit", "norm"])
             optional_gradient_clip_value = gr.Textbox(label="Limiting value", value="1e-1")
             optional_gradient_norm_type = gr.Textbox(label="Norm type", value="2")
+        with gr.Row(visible=False) as noise_scheduler_options:
+            noise_training_scheduler_enabled = gr.Checkbox(label="Use Noise training scheduler(test)")
+            noise_training_scheduler_repeat = gr.Checkbox(label="Restarts noise scheduler, or linear")
+            noise_training_scheduler_cycle = gr.Number(label="Restarts noise scheduler every nth epoch")
         # change by feedback
+        show_noise_options.change(
+            fn = lambda show:gr_show(show),
+            inputs = [show_noise_options],
+            outputs = [noise_scheduler_options]
+        )
         use_beta_adamW_checkbox.change(
             fn=lambda show: gr_show(show),
             inputs=[use_beta_adamW_checkbox],
@@ -239,7 +251,10 @@ def on_train_gamma_tab(params=None):
             gradient_clip_opt,
             optional_gradient_clip_value,
             optional_gradient_norm_type,
-            latent_sampling_std_value],
+            latent_sampling_std_value,
+        noise_training_scheduler_enabled,
+        noise_training_scheduler_repeat,
+        noise_training_scheduler_cycle],
         outputs=[
             ti_output,
             ti_outcome,
@@ -335,6 +350,9 @@ def on_train_gamma_tab(params=None):
             optional_gradient_clip_value,
             optional_gradient_norm_type,
             latent_sampling_std_value,
+        noise_training_scheduler_enabled,
+        noise_training_scheduler_repeat,
+        noise_training_scheduler_cycle,
             load_training_option
 
         ],

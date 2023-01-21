@@ -22,15 +22,18 @@ from ..hnutil import optim_to
 from ..ui import create_hypernetwork_load
 from ..scheduler import CosineAnnealingWarmUpRestarts
 from .dataset import PersonalizedBase, PersonalizedDataLoader
+from ..ddpm_hijack import set_scheduler
 
 
 def get_training_option(filename):
     print(filename)
-    if os.path.exists(os.path.join(shared.cmd_opts.hypernetwork_dir, filename)) and os.path.isfile(os.path.join(shared.cmd_opts.hypernetwork_dir, filename)):
+    if os.path.exists(os.path.join(shared.cmd_opts.hypernetwork_dir, filename)) and os.path.isfile(
+            os.path.join(shared.cmd_opts.hypernetwork_dir, filename)):
         filename = os.path.join(shared.cmd_opts.hypernetwork_dir, filename)
     elif os.path.exists(filename) and os.path.isfile(filename):
         filename = filename
-    elif os.path.exists(os.path.join(shared.cmd_opts.hypernetwork_dir, filename + '.json')) and os.path.isfile(os.path.join(shared.cmd_opts.hypernetwork_dir, filename + '.json')):
+    elif os.path.exists(os.path.join(shared.cmd_opts.hypernetwork_dir, filename + '.json')) and os.path.isfile(
+            os.path.join(shared.cmd_opts.hypernetwork_dir, filename + '.json')):
         filename = os.path.join(shared.cmd_opts.hypernetwork_dir, filename + '.json')
     else:
         return False
@@ -52,7 +55,9 @@ def train_hypernetwork(id_task, hypernetwork_name, learn_rate, batch_size, gradi
                        adamw_eps=1e-8,
                        use_grad_opts=False, gradient_clip_opt='None', optional_gradient_clip_value=1e01,
                        optional_gradient_norm_type=2, latent_sampling_std=-1,
-                       load_training_options=''):
+                       noise_training_scheduler_enabled=False, noise_training_scheduler_repeat=False, noise_training_scheduler_cycle=128,
+                       load_training_options=''
+                       ):
     # images allows training previews to have infotext. Importing it at the top causes a circular import problem.
     from modules import images
     if load_training_options != '':
@@ -87,6 +92,9 @@ def train_hypernetwork(id_task, hypernetwork_name, learn_rate, batch_size, gradi
             optional_gradient_clip_value = dump['optional_gradient_clip_value']
             optional_gradient_norm_type = dump['optional_gradient_norm_type']
             latent_sampling_std = dump.get('latent_sampling_std', -1)
+            noise_training_scheduler_enabled = dump.get('noise_training_scheduler_enabled', False)
+            noise_training_scheduler_repeat = dump.get('noise_training_scheduler_repeat', False)
+            noise_training_scheduler_cycle = dump.get('noise_training_scheduler_cycle', 128)
     try:
         if use_adamw_parameter:
             adamw_weight_decay, adamw_beta_1, adamw_beta_2, adamw_eps = [float(x) for x in
@@ -132,6 +140,11 @@ def train_hypernetwork(id_task, hypernetwork_name, learn_rate, batch_size, gradi
             create_when_converge = False
     except ValueError:
         raise RuntimeError("Cannot use advanced LR scheduler settings!")
+    if noise_training_scheduler_enabled:
+        set_scheduler(noise_training_scheduler_cycle, noise_training_scheduler_repeat, True)
+        print(f"Noise training scheduler is now ready for {noise_training_scheduler_cycle}, {noise_training_scheduler_repeat}!")
+    else:
+        set_scheduler(-1, False, False)
     if use_grad_opts and gradient_clip_opt != "None":
         try:
             optional_gradient_clip_value = float(optional_gradient_clip_value)
@@ -324,7 +337,7 @@ def train_hypernetwork(id_task, hypernetwork_name, learn_rate, batch_size, gradi
                         c = stack_conds(batch.cond).to(devices.device, non_blocking=pin_memory)
                     loss = shared.sd_model(x, c)[0]
                     for filenames in batch.filename:
-                        loss_dict[filenames].append(loss.item())
+                        loss_dict[filenames].append(loss.detach().item())
                     loss /= gradient_step
                     del x
                     del c
@@ -382,10 +395,12 @@ def train_hypernetwork(id_task, hypernetwork_name, learn_rate, batch_size, gradi
                     epoch_step = hypernetwork.step - (epoch_num * len(ds)) + 1
                     mean_loss = sum(sum(x) for x in loss_dict.values()) / sum(len(x) for x in loss_dict.values())
                     tensorboard_add(tensorboard_writer, loss=mean_loss, global_step=hypernetwork.step, step=epoch_step,
-                                    learn_rate=scheduler.learn_rate if not use_beta_scheduler else optimizer.param_groups[0]['lr'], epoch_num=epoch_num)
+                                    learn_rate=scheduler.learn_rate if not use_beta_scheduler else
+                                    optimizer.param_groups[0]['lr'], epoch_num=epoch_num)
                 if images_dir is not None and (
                         use_beta_scheduler and scheduler_beta.is_EOC(hypernetwork.step) and create_when_converge) or (
                         create_image_every > 0 and steps_done % create_image_every == 0):
+                    set_scheduler(-1, False, False)
                     forced_filename = f'{hypernetwork_name}-{steps_done}'
                     last_saved_image = os.path.join(images_dir, forced_filename)
                     rng_state = torch.get_rng_state()
@@ -437,6 +452,8 @@ def train_hypernetwork(id_task, hypernetwork_name, learn_rate, batch_size, gradi
                     hypernetwork.train()
                     if move_optimizer:
                         optim_to(optimizer, devices.device)
+                    if noise_training_scheduler_enabled:
+                        set_scheduler(noise_training_scheduler_cycle, noise_training_scheduler_repeat, True)
                     if image is not None:
                         if hasattr(shared.state, 'assign_current_image'):
                             shared.state.assign_current_image(image)
@@ -469,6 +486,7 @@ Last saved image: {html.escape(last_saved_image)}<br/>
         shared.parallel_processing_allowed = old_parallel_processing_allowed
         if hasattr(sd_hijack_checkpoint, 'remove'):
             sd_hijack_checkpoint.remove()
+        set_scheduler(-1, False, False)
     report_statistics(loss_dict)
     filename = os.path.join(shared.cmd_opts.hypernetwork_dir, f'{hypernetwork_name}.pt')
     hypernetwork.optimizer_name = optimizer_name
@@ -488,7 +506,8 @@ def internal_clean_training(hypernetwork_name, data_root, log_directory,
                             preview_from_txt2img, preview_prompt, preview_negative_prompt, preview_steps,
                             preview_sampler_index, preview_cfg_scale, preview_seed, preview_width, preview_height,
                             move_optimizer=True,
-                            load_hypernetworks_option='', load_training_options='', manual_dataset_seed=-1, setting_tuple=None):
+                            load_hypernetworks_option='', load_training_options='', manual_dataset_seed=-1,
+                            setting_tuple=None):
     # images allows training previews to have infotext. Importing it at the top causes a circular import problem.
     from modules import images
     base_hypernetwork_name = hypernetwork_name
@@ -514,10 +533,11 @@ def internal_clean_training(hypernetwork_name, data_root, log_directory,
         skip_connection = dump_hyper['skip_connection']
         hypernetwork = create_hypernetwork_load(hypernetwork_name, enable_sizes, overwrite_old, layer_structure,
                                                 activation_func, weight_init, add_layer_norm, use_dropout,
-                                                dropout_structure, optional_info, weight_init_seed, normal_std, skip_connection)
+                                                dropout_structure, optional_info, weight_init_seed, normal_std,
+                                                skip_connection)
     else:
         load_hypernetwork(hypernetwork_name)
-        hypernetwork_name = hypernetwork_name.rsplit('(',1)[0] + setting_suffix
+        hypernetwork_name = hypernetwork_name.rsplit('(', 1)[0] + setting_suffix
         shared.loaded_hypernetwork.save(os.path.join(shared.cmd_opts.hypernetwork_dir, f"{hypernetwork_name}.pt"))
         shared.reload_hypernetworks()
         load_hypernetwork(hypernetwork_name)
@@ -552,6 +572,9 @@ def internal_clean_training(hypernetwork_name, data_root, log_directory,
             optional_gradient_clip_value = dump['optional_gradient_clip_value']
             optional_gradient_norm_type = dump['optional_gradient_norm_type']
             latent_sampling_std = dump.get('latent_sampling_std', -1)
+            noise_training_scheduler_enabled = dump.get('noise_training_scheduler_enabled', False)
+            noise_training_scheduler_repeat = dump.get('noise_training_scheduler_repeat', False)
+            noise_training_scheduler_cycle = dump.get('noise_training_scheduler_cycle', 128)
         else:
             raise RuntimeError(f"Cannot load from {load_training_options}!")
     else:
@@ -627,6 +650,11 @@ def internal_clean_training(hypernetwork_name, data_root, log_directory,
     else:
         def gradient_clipping(arg1):
             return
+    if noise_training_scheduler_enabled:
+        set_scheduler(noise_training_scheduler_cycle, noise_training_scheduler_repeat, True)
+        print(f"Noise training scheduler is now ready for {noise_training_scheduler_cycle}, {noise_training_scheduler_repeat}!")
+    else:
+        set_scheduler(-1, False, False)
     save_hypernetwork_every = save_hypernetwork_every or 0
     create_image_every = create_image_every or 0
     validate_train_inputs(hypernetwork_name, learn_rate, batch_size, gradient_step, data_root,
@@ -794,7 +822,7 @@ def internal_clean_training(hypernetwork_name, data_root, log_directory,
                         c = stack_conds(batch.cond).to(devices.device, non_blocking=pin_memory)
                     loss = shared.sd_model(x, c)[0]
                     for filenames in batch.filename:
-                        loss_dict[filenames].append(loss.item())
+                        loss_dict[filenames].append(loss.detach().item())
                     loss /= gradient_step
                     del x
                     del c
@@ -852,10 +880,12 @@ def internal_clean_training(hypernetwork_name, data_root, log_directory,
                     epoch_step = hypernetwork.step - (epoch_num * len(ds)) + 1
                     mean_loss = sum(sum(x) for x in loss_dict.values()) / sum(len(x) for x in loss_dict.values())
                     tensorboard_add(tensorboard_writer, loss=mean_loss, global_step=hypernetwork.step, step=epoch_step,
-                                    learn_rate=scheduler.learn_rate if not use_beta_scheduler else optimizer.param_groups[0]['lr'], epoch_num=epoch_num,base_name=hypernetwork_name)
+                                    learn_rate=scheduler.learn_rate if not use_beta_scheduler else
+                                    optimizer.param_groups[0]['lr'], epoch_num=epoch_num, base_name=hypernetwork_name)
                 if images_dir is not None and (
                         use_beta_scheduler and scheduler_beta.is_EOC(hypernetwork.step) and create_when_converge) or (
                         create_image_every > 0 and steps_done % create_image_every == 0):
+                    set_scheduler(-1, False, False)
                     forced_filename = f'{hypernetwork_name}-{steps_done}'
                     last_saved_image = os.path.join(images_dir, forced_filename)
                     rng_state = torch.get_rng_state()
@@ -907,6 +937,8 @@ def internal_clean_training(hypernetwork_name, data_root, log_directory,
                     hypernetwork.train()
                     if move_optimizer:
                         optim_to(optimizer, devices.device)
+                    if noise_training_scheduler_enabled:
+                        set_scheduler(noise_training_scheduler_cycle, noise_training_scheduler_repeat, True)
                     if image is not None:
                         if hasattr(shared.state, 'assign_current_image'):
                             shared.state.assign_current_image(image)
@@ -936,10 +968,12 @@ Last saved image: {html.escape(last_saved_image)}<br/>
         pbar.leave = False
         pbar.close()
         hypernetwork.eval()
+        set_scheduler(-1, False, False)
         shared.parallel_processing_allowed = old_parallel_processing_allowed
         if hasattr(sd_hijack_checkpoint, 'remove'):
             sd_hijack_checkpoint.remove()
         if shared.opts.training_enable_tensorboard:
+            mean_loss = sum(sum(x) for x in loss_dict.values()) / sum(len(x) for x in loss_dict.values()) if sum(len(x) for x in loss_dict.values()) > 0 else 0
             tensorboard_log_hyperparameter(tensorboard_writer, lr=learn_rate,
                                            GA_steps=gradient_step,
                                            batch_size=batch_size,
@@ -965,7 +999,7 @@ Last saved image: {html.escape(last_saved_image)}<br/>
                                            gradient_clip_value=optional_gradient_clip_value,
                                            gradient_clip_norm_type=optional_gradient_norm_type,
                                            loss=mean_loss,
-                                           base_hypernetwork_name= hypernetwork_name
+                                           base_hypernetwork_name=hypernetwork_name
                                            )
     report_statistics(loss_dict)
     filename = os.path.join(shared.cmd_opts.hypernetwork_dir, f'{hypernetwork_name}.pt')
@@ -1012,4 +1046,3 @@ def train_hypernetwork_tuning(id_task, hypernetwork_name, data_root, log_directo
                 load_hypernetworks_option, load_training_option, manual_dataset_seed, setting_tuple=(_i, _j))
             if shared.state.interrupted:
                 return None, None
-
