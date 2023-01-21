@@ -13,6 +13,7 @@ import tqdm
 
 from modules import shared, sd_models, devices, processing, sd_samplers
 from modules.hypernetworks.hypernetwork import optimizer_dict, stack_conds, save_hypernetwork, report_statistics
+from modules.textual_inversion import textual_inversion
 from modules.textual_inversion.learn_schedule import LearnRateScheduler
 from ..tbutils import tensorboard_setup, tensorboard_add, tensorboard_add_image, tensorboard_log_hyperparameter
 from .textual_inversion import validate_train_inputs, write_loss
@@ -219,9 +220,13 @@ def train_hypernetwork(id_task, hypernetwork_name, learn_rate, batch_size, gradi
             return
     save_hypernetwork_every = save_hypernetwork_every or 0
     create_image_every = create_image_every or 0
-    validate_train_inputs(hypernetwork_name, learn_rate, batch_size, gradient_step, data_root,
-                          template_file, steps, save_hypernetwork_every, create_image_every,
-                          log_directory, name="hypernetwork")
+    if not os.path.isfile(template_file):
+        template_file = textual_inversion.textual_inversion_templates.get(template_file, None)
+        if template_file is not None:
+            template_file = template_file.path
+        else:
+            raise AssertionError(f"Cannot find {template_file}!")
+    validate_train_inputs(hypernetwork_name, learn_rate, batch_size, gradient_step, data_root, template_file, steps, save_hypernetwork_every, create_image_every, log_directory, name="hypernetwork")
     shared.state.job = "train-hypernetwork"
     shared.state.textinfo = "Initializing hypernetwork training..."
     shared.state.job_count = steps
@@ -678,9 +683,13 @@ def internal_clean_training(hypernetwork_name, data_root, log_directory,
         set_scheduler(-1, False, False)
     save_hypernetwork_every = save_hypernetwork_every or 0
     create_image_every = create_image_every or 0
-    validate_train_inputs(hypernetwork_name, learn_rate, batch_size, gradient_step, data_root,
-                          template_file, steps, save_hypernetwork_every, create_image_every,
-                          log_directory, name="hypernetwork")
+    if not os.path.isfile(template_file):
+        template_file = textual_inversion.textual_inversion_templates.get(template_file, None)
+        if template_file is not None:
+            template_file = template_file.path
+        else:
+            raise AssertionError(f"Cannot find {template_file}!")
+    validate_train_inputs(hypernetwork_name, learn_rate, batch_size, gradient_step, data_root, template_file, steps, save_hypernetwork_every, create_image_every, log_directory, name="hypernetwork")
     hypernetwork.to(devices.device)
     assert hypernetwork is not None, f"Cannot load {hypernetwork_name}!"
     if not isinstance(hypernetwork, Hypernetwork):
