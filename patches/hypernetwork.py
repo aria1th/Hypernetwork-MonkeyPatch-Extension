@@ -164,7 +164,7 @@ class HypernetworkModule(torch.nn.Module):
         if state_dict is not None:
             self.fix_old_state_dict(state_dict)
             self.load_state_dict(state_dict)
-        else:
+        elif not skip_connection:
             if generation_seed is not None:
                 torch.manual_seed(generation_seed)
             for layer in self.linear:

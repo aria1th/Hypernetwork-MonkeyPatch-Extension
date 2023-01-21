@@ -141,10 +141,10 @@ def train_hypernetwork(id_task, hypernetwork_name, learn_rate, batch_size, gradi
     except ValueError:
         raise RuntimeError("Cannot use advanced LR scheduler settings!")
     if noise_training_scheduler_enabled:
-        set_scheduler(noise_training_scheduler_cycle, noise_training_scheduler_repeat)
+        set_scheduler(noise_training_scheduler_cycle, noise_training_scheduler_repeat, True)
         print(f"Noise training scheduler is now ready for {noise_training_scheduler_cycle}, {noise_training_scheduler_repeat}!")
     else:
-        set_scheduler(-1, False)
+        set_scheduler(-1, False, False)
     if use_grad_opts and gradient_clip_opt != "None":
         try:
             optional_gradient_clip_value = float(optional_gradient_clip_value)
@@ -400,7 +400,7 @@ def train_hypernetwork(id_task, hypernetwork_name, learn_rate, batch_size, gradi
                 if images_dir is not None and (
                         use_beta_scheduler and scheduler_beta.is_EOC(hypernetwork.step) and create_when_converge) or (
                         create_image_every > 0 and steps_done % create_image_every == 0):
-                    set_scheduler(-1, False)
+                    set_scheduler(-1, False, False)
                     forced_filename = f'{hypernetwork_name}-{steps_done}'
                     last_saved_image = os.path.join(images_dir, forced_filename)
                     rng_state = torch.get_rng_state()
@@ -453,7 +453,7 @@ def train_hypernetwork(id_task, hypernetwork_name, learn_rate, batch_size, gradi
                     if move_optimizer:
                         optim_to(optimizer, devices.device)
                     if noise_training_scheduler_enabled:
-                        set_scheduler(noise_training_scheduler_cycle, noise_training_scheduler_repeat)
+                        set_scheduler(noise_training_scheduler_cycle, noise_training_scheduler_repeat, True)
                     if image is not None:
                         if hasattr(shared.state, 'assign_current_image'):
                             shared.state.assign_current_image(image)
@@ -486,7 +486,7 @@ Last saved image: {html.escape(last_saved_image)}<br/>
         shared.parallel_processing_allowed = old_parallel_processing_allowed
         if hasattr(sd_hijack_checkpoint, 'remove'):
             sd_hijack_checkpoint.remove()
-        set_scheduler(-1, False)
+        set_scheduler(-1, False, False)
     report_statistics(loss_dict)
     filename = os.path.join(shared.cmd_opts.hypernetwork_dir, f'{hypernetwork_name}.pt')
     hypernetwork.optimizer_name = optimizer_name
@@ -651,10 +651,10 @@ def internal_clean_training(hypernetwork_name, data_root, log_directory,
         def gradient_clipping(arg1):
             return
     if noise_training_scheduler_enabled:
-        set_scheduler(noise_training_scheduler_cycle, noise_training_scheduler_repeat)
+        set_scheduler(noise_training_scheduler_cycle, noise_training_scheduler_repeat, True)
         print(f"Noise training scheduler is now ready for {noise_training_scheduler_cycle}, {noise_training_scheduler_repeat}!")
     else:
-        set_scheduler(-1, False)
+        set_scheduler(-1, False, False)
     save_hypernetwork_every = save_hypernetwork_every or 0
     create_image_every = create_image_every or 0
     validate_train_inputs(hypernetwork_name, learn_rate, batch_size, gradient_step, data_root,
@@ -885,7 +885,7 @@ def internal_clean_training(hypernetwork_name, data_root, log_directory,
                 if images_dir is not None and (
                         use_beta_scheduler and scheduler_beta.is_EOC(hypernetwork.step) and create_when_converge) or (
                         create_image_every > 0 and steps_done % create_image_every == 0):
-                    set_scheduler(-1, False)
+                    set_scheduler(-1, False, False)
                     forced_filename = f'{hypernetwork_name}-{steps_done}'
                     last_saved_image = os.path.join(images_dir, forced_filename)
                     rng_state = torch.get_rng_state()
@@ -938,7 +938,7 @@ def internal_clean_training(hypernetwork_name, data_root, log_directory,
                     if move_optimizer:
                         optim_to(optimizer, devices.device)
                     if noise_training_scheduler_enabled:
-                        set_scheduler(noise_training_scheduler_cycle, noise_training_scheduler_repeat)
+                        set_scheduler(noise_training_scheduler_cycle, noise_training_scheduler_repeat, True)
                     if image is not None:
                         if hasattr(shared.state, 'assign_current_image'):
                             shared.state.assign_current_image(image)
@@ -968,7 +968,7 @@ Last saved image: {html.escape(last_saved_image)}<br/>
         pbar.leave = False
         pbar.close()
         hypernetwork.eval()
-        set_scheduler(-1, False)
+        set_scheduler(-1, False, False)
         shared.parallel_processing_allowed = old_parallel_processing_allowed
         if hasattr(sd_hijack_checkpoint, 'remove'):
             sd_hijack_checkpoint.remove()

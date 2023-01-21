@@ -6,11 +6,14 @@ from modules import shared
 class Scheduler:
     """ Proportional Noise Step Scheduler"""
     def __init__(self, cycle_step=128, repeat=True):
+        self.disabled = True
         self.cycle_step = int(cycle_step)
         self.repeat = repeat
         self.run_assertion()
 
     def __call__(self, value, step):
+        if self.disabled:
+            return value
         if self.repeat:
             step %= self.cycle_step
             return max(1, int(value * step / self.cycle_step))
@@ -22,7 +25,8 @@ class Scheduler:
         assert type(self.repeat) is bool
         assert not self.repeat or self.cycle_step > 0
 
-    def set(self, cycle_step=-1, repeat=-1):
+    def set(self, cycle_step=-1, repeat=-1, disabled=True):
+        self.disabled = disabled
         if cycle_step >= 0:
             self.cycle_step = int(cycle_step)
         if repeat != -1:
@@ -41,9 +45,9 @@ def get_current(value, step=None):
     return max(1, training_scheduler(value, step))
 
 
-def set_scheduler(cycle_step, repeat):
+def set_scheduler(cycle_step, repeat, enabled=False):
     global training_scheduler
-    training_scheduler.set(cycle_step, repeat)
+    training_scheduler.set(cycle_step, repeat, not enabled)
 
 
 def forward(self, x, c, *args, **kwargs):
