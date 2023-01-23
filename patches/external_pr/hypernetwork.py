@@ -442,9 +442,13 @@ def train_hypernetwork(id_task, hypernetwork_name, learn_rate, batch_size, gradi
                         do_not_save_grid=True,
                         do_not_save_samples=True,
                     )
-
+                    if hasattr(p, 'disable_extra_networks'):
+                        p.disable_extra_networks = True
+                        is_patched = True
+                    else:
+                        is_patched = False
                     if preview_from_txt2img:
-                        p.prompt = preview_prompt + hypernetwork.extra_name()
+                        p.prompt = preview_prompt + (hypernetwork.extra_name() if not is_patched else "")
                         print(p.prompt)
                         p.negative_prompt = preview_negative_prompt
                         p.steps = preview_steps
@@ -454,7 +458,7 @@ def train_hypernetwork(id_task, hypernetwork_name, learn_rate, batch_size, gradi
                         p.width = preview_width
                         p.height = preview_height
                     else:
-                        p.prompt = batch.cond_text[0]+ hypernetwork.extra_name()
+                        p.prompt = batch.cond_text[0] + (hypernetwork.extra_name() if not is_patched else "")
                         p.steps = 20
                         p.width = training_width
                         p.height = training_height
@@ -513,6 +517,8 @@ Last saved image: {html.escape(last_saved_image)}<br/>
             sd_hijack_checkpoint.remove()
         set_scheduler(-1, False, False)
         remove_accessible()
+        gc.collect()
+        torch.cuda.empty_cache()
     report_statistics(loss_dict)
     filename = os.path.join(shared.cmd_opts.hypernetwork_dir, f'{hypernetwork_name}.pt')
     hypernetwork.optimizer_name = optimizer_name
@@ -931,9 +937,13 @@ def internal_clean_training(hypernetwork_name, data_root, log_directory,
                         do_not_save_grid=True,
                         do_not_save_samples=True,
                     )
-
+                    if hasattr(p, 'disable_extra_networks'):
+                        p.disable_extra_networks = True
+                        is_patched = True
+                    else:
+                        is_patched = False
                     if preview_from_txt2img:
-                        p.prompt = preview_prompt + hypernetwork.extra_name()
+                        p.prompt = preview_prompt + (hypernetwork.extra_name() if not is_patched else "")
                         p.negative_prompt = preview_negative_prompt
                         p.steps = preview_steps
                         p.sampler_name = sd_samplers.samplers[preview_sampler_index].name
@@ -942,7 +952,7 @@ def internal_clean_training(hypernetwork_name, data_root, log_directory,
                         p.width = preview_width
                         p.height = preview_height
                     else:
-                        p.prompt = batch.cond_text[0]+ hypernetwork.extra_name()
+                        p.prompt = batch.cond_text[0] + (hypernetwork.extra_name() if not is_patched else "")
                         p.steps = 20
                         p.width = training_width
                         p.height = training_height
@@ -1040,7 +1050,8 @@ Last saved image: {html.escape(last_saved_image)}<br/>
     hypernetwork.optimizer_state_dict = None  # dereference it after saving, to save memory.
     shared.sd_model.cond_stage_model.to(devices.device)
     shared.sd_model.first_stage_model.to(devices.device)
-
+    gc.collect()
+    torch.cuda.empty_cache()
     return hypernetwork, filename
 
 
