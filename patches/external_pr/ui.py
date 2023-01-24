@@ -83,7 +83,7 @@ def save_training_setting(*args):
     gamma_rate, use_beta_adamW_checkbox, save_when_converge, create_when_converge, \
     adamw_weight_decay, adamw_beta_1, adamw_beta_2, adamw_eps, show_gradient_clip_checkbox, \
     gradient_clip_opt, optional_gradient_clip_value, optional_gradient_norm_type, latent_sampling_std,\
-    noise_training_scheduler_enabled, noise_training_scheduler_repeat, noise_training_scheduler_cycle = args
+    noise_training_scheduler_enabled, noise_training_scheduler_repeat, noise_training_scheduler_cycle, loss_opt = args
     dumped_locals = locals()
     dumped_locals.pop('args')
     filename = (str(random.randint(0, 1024)) if save_file_name == '' else save_file_name) + '_train_' + '.json'
@@ -223,6 +223,9 @@ def on_train_gamma_tab(params=None):
                                               choices=['once', 'deterministic', 'random'])
             latent_sampling_std_value = gr.Number(label="Standard deviation for sampling", value=-1)
         with gr.Row():
+            loss_opt = gr.Radio(label="loss type", value="loss",
+                                choices=['loss', 'loss_simple', 'loss_vlb'])
+        with gr.Row():
             save_training_option = gr.Button(value="Save training setting")
             save_file_name = gr.Textbox(label="File name to save setting as", value="")
             load_training_option = gr.Textbox(
@@ -269,7 +272,8 @@ def on_train_gamma_tab(params=None):
             latent_sampling_std_value,
         noise_training_scheduler_enabled,
         noise_training_scheduler_repeat,
-        noise_training_scheduler_cycle],
+        noise_training_scheduler_cycle,
+        loss_opt],
         outputs=[
             ti_output,
             ti_outcome,

@@ -103,7 +103,7 @@ def train_hypernetwork(id_task, hypernetwork_name, learn_rate, batch_size, gradi
                        use_grad_opts=False, gradient_clip_opt='None', optional_gradient_clip_value=1e01,
                        optional_gradient_norm_type=2, latent_sampling_std=-1,
                        noise_training_scheduler_enabled=False, noise_training_scheduler_repeat=False, noise_training_scheduler_cycle=128,
-                       load_training_options=''
+                       load_training_options='', loss_opt='loss_simple'
                        ):
     # images allows training previews to have infotext. Importing it at the top causes a circular import problem.
     from modules import images
@@ -142,6 +142,7 @@ def train_hypernetwork(id_task, hypernetwork_name, learn_rate, batch_size, gradi
             noise_training_scheduler_enabled = dump.get('noise_training_scheduler_enabled', False)
             noise_training_scheduler_repeat = dump.get('noise_training_scheduler_repeat', False)
             noise_training_scheduler_cycle = dump.get('noise_training_scheduler_cycle', 128)
+            loss_opt = dump.get('loss_opt', 'loss_simple')
     try:
         if use_adamw_parameter:
             adamw_weight_decay, adamw_beta_1, adamw_beta_2, adamw_eps = [float(x) for x in
@@ -358,7 +359,8 @@ def train_hypernetwork(id_task, hypernetwork_name, learn_rate, batch_size, gradi
                         shared.sd_model.cond_stage_model.to(devices.cpu)
                     else:
                         c = stack_conds(batch.cond).to(devices.device, non_blocking=pin_memory)
-                    loss = shared.sd_model(x, c)[0]
+                    _, losses = shared.sd_model(x, c)
+                    loss = losses['val/' + loss_opt]
                     for filenames in batch.filename:
                         loss_dict[filenames].append(loss.detach().item())
                     loss /= gradient_step
@@ -607,6 +609,7 @@ def internal_clean_training(hypernetwork_name, data_root, log_directory,
             noise_training_scheduler_enabled = dump.get('noise_training_scheduler_enabled', False)
             noise_training_scheduler_repeat = dump.get('noise_training_scheduler_repeat', False)
             noise_training_scheduler_cycle = dump.get('noise_training_scheduler_cycle', 128)
+            loss_opt = dump.get('loss_opt', 'loss_simple')
         else:
             raise RuntimeError(f"Cannot load from {load_training_options}!")
     else:
@@ -854,7 +857,8 @@ def internal_clean_training(hypernetwork_name, data_root, log_directory,
                         shared.sd_model.cond_stage_model.to(devices.cpu)
                     else:
                         c = stack_conds(batch.cond).to(devices.device, non_blocking=pin_memory)
-                    loss = shared.sd_model(x, c)[0]
+                    _, losses = shared.sd_model(x, c)
+                    loss = losses['val/' + loss_opt]
                     for filenames in batch.filename:
                         loss_dict[filenames].append(loss.detach().item())
                     loss /= gradient_step
