@@ -7,7 +7,6 @@ import traceback
 import torch
 from torch.nn.init import normal_, xavier_uniform_, zeros_, xavier_normal_, kaiming_uniform_, kaiming_normal_
 
-import scripts.xy_grid
 from modules.shared import opts
 try:
     from modules.hashes import sha256
@@ -597,8 +596,12 @@ if hasattr(modules.hypernetworks.hypernetwork, 'apply_strength'):
     modules.hypernetworks.hypernetwork.apply_strength = apply_strength
 modules.hypernetworks.hypernetwork.Hypernetwork = Hypernetwork
 modules.hypernetworks.hypernetwork.HypernetworkModule = HypernetworkModule
-if hasattr(scripts.xy_grid, 'apply_hypernetwork_strength'):
-    scripts.xy_grid.apply_hypernetwork_strength = apply_hypernetwork_strength
+try:
+    import scripts.xy_grid
+    if hasattr(scripts.xy_grid, 'apply_hypernetwork_strength'):
+        scripts.xy_grid.apply_hypernetwork_strength = apply_hypernetwork_strength
+except (ModuleNotFoundError, ImportError):
+    pass
 
 # Fix calculating hash for multiple hns
 processing.create_infotext = create_infotext
