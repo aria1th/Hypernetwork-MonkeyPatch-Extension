@@ -7,6 +7,7 @@ import traceback
 import torch
 from torch.nn.init import normal_, xavier_uniform_, zeros_, xavier_normal_, kaiming_uniform_, kaiming_normal_
 
+from modules.sd_samplers_kdiffusion import KDiffusionSampler
 from modules.shared import opts
 try:
     from modules.hashes import sha256
@@ -551,41 +552,6 @@ def apply_hypernetwork_strength(p, x, xs):
     apply_strength(x)
 
 
-def create_infotext(p, all_prompts, all_seeds, all_subseeds, comments=None, iteration=0, position_in_batch=0):
-    index = position_in_batch + iteration * p.batch_size
-
-    clip_skip = getattr(p, 'clip_skip', opts.CLIP_stop_at_last_layers)
-
-    generation_params = {
-        "Steps": p.steps,
-        "Sampler": p.sampler_name,
-        "CFG scale": p.cfg_scale,
-        "Seed": all_seeds[index],
-        "Face restoration": (opts.face_restoration_model if p.restore_faces else None),
-        "Size": f"{p.width}x{p.height}",
-        "Model hash": getattr(p, 'sd_model_hash', None if not opts.add_model_hash_to_info or not shared.sd_model.sd_model_hash else shared.sd_model.sd_model_hash),
-        "Model": (None if not opts.add_model_name_to_info or not shared.sd_model.sd_checkpoint_info.model_name else shared.sd_model.sd_checkpoint_info.model_name.replace(',', '').replace(':', '')),
-        "Batch size": (None if p.batch_size < 2 else p.batch_size),
-        "Batch pos": (None if p.batch_size < 2 else position_in_batch),
-        "Variation seed": (None if p.subseed_strength == 0 else all_subseeds[index]),
-        "Variation seed strength": (None if p.subseed_strength == 0 else p.subseed_strength),
-        "Seed resize from": (None if p.seed_resize_from_w == 0 or p.seed_resize_from_h == 0 else f"{p.seed_resize_from_w}x{p.seed_resize_from_h}"),
-        "Denoising strength": getattr(p, 'denoising_strength', None),
-        "Conditional mask weight": getattr(p, "inpainting_mask_weight", shared.opts.inpainting_mask_weight) if p.is_using_inpainting_conditioning else None,
-        "Eta": (None if p.sampler is None or p.sampler.eta == p.sampler.default_eta else p.sampler.eta),
-        "Clip skip": None if clip_skip <= 1 else clip_skip,
-        "ENSD": None if opts.eta_noise_seed_delta == 0 else opts.eta_noise_seed_delta,
-    }
-
-    generation_params.update(p.extra_generation_params)
-
-    generation_params_text = ", ".join([k if k == v else f'{k}: {generation_parameters_copypaste.quote(v)}' for k, v in generation_params.items() if v is not None])
-
-    negative_prompt_text = "\nNegative prompt: " + p.all_negative_prompts[index] if p.all_negative_prompts[index] else ""
-
-    return f"{all_prompts[index]}{negative_prompt_text}\n{generation_params_text}".strip()
-
-
 modules.hypernetworks.hypernetwork.list_hypernetworks = list_hypernetworks
 modules.hypernetworks.hypernetwork.load_hypernetwork = load_hypernetwork
 if hasattr(modules.hypernetworks.hypernetwork, 'apply_hypernetwork'):
@@ -603,5 +569,3 @@ try:
 except (ModuleNotFoundError, ImportError):
     pass
 
-# Fix calculating hash for multiple hns
-processing.create_infotext = create_infotext
