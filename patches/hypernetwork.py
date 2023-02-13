@@ -7,8 +7,6 @@ import traceback
 import torch
 from torch.nn.init import normal_, xavier_uniform_, zeros_, xavier_normal_, kaiming_uniform_, kaiming_normal_
 
-from modules.sd_samplers_kdiffusion import KDiffusionSampler
-from modules.shared import opts
 try:
     from modules.hashes import sha256
 except (ImportError, ModuleNotFoundError):
@@ -16,7 +14,7 @@ except (ImportError, ModuleNotFoundError):
     from .hashes_backup import sha256
 
 import modules.hypernetworks.hypernetwork
-from modules import devices, shared, sd_models, processing, generation_parameters_copypaste
+from modules import devices, shared, sd_models
 from .hnutil import parse_dropout_structure, find_self
 from .shared import version_flag
 
