@@ -81,6 +81,7 @@ def prepare_training_hypernetwork(hypernetwork_name, learn_rate=0.1, use_adamw_p
                 from .dadapt_test.install import get_dadapt_adam
                 optim_class = get_dadapt_adam()
                 if optim_class != torch.optim.AdamW:
+                    print('Optimizer class is '+ str(optim_class))
                     optimizer = optim_class(params=weights, lr=learn_rate, decouple=True, **adamW_kwarg_dict)
                 else:
                     optimizer = torch.optim.AdamW(params=weights, lr=learn_rate, **adamW_kwarg_dict)
@@ -94,7 +95,7 @@ def prepare_training_hypernetwork(hypernetwork_name, learn_rate=0.1, use_adamw_p
         if use_dadaptation:
             from .dadapt_test.install import get_dadapt_adam
             optim_class = get_dadapt_adam()
-            if optim_class == torch.optim.AdamW:
+            if optim_class != torch.optim.AdamW:
                 optimizer = optim_class(params=weights, lr=learn_rate, decouple=True, **adamW_kwarg_dict)
                 optimizer_name = 'DAdaptAdamW'
     if optimizer is None:
@@ -107,6 +108,7 @@ def prepare_training_hypernetwork(hypernetwork_name, learn_rate=0.1, use_adamw_p
         except RuntimeError as e:
             print("Cannot resume from saved optimizer!")
             print(e)
+
     return hypernetwork, optimizer, weights, optimizer_name
 
 def train_hypernetwork(id_task, hypernetwork_name, learn_rate, batch_size, gradient_step, data_root, log_directory,
@@ -820,7 +822,7 @@ def internal_clean_training(hypernetwork_name, data_root, log_directory,
         if use_dadaptation:
             from .dadapt_test.install import get_dadapt_adam
             optim_class = get_dadapt_adam()
-            if optim_class == torch.optim.AdamW:
+            if optim_class != torch.optim.AdamW:
                 optimizer = optim_class(params=weights, lr=scheduler.learn_rate, decouple=True, **adamW_kwarg_dict)
                 optimizer_name = 'DAdaptAdamW'
     if optimizer is None:
