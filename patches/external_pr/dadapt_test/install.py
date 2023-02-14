@@ -22,5 +22,5 @@ def get_dadapt_adam():
             return DAdaptAdam
         except (ModuleNotFoundError, ImportError):
             print('Cannot use DAdaptAdam!')
-            from torch.optim import AdamW
-            return AdamW
+    from torch.optim import AdamW
+    return AdamW
