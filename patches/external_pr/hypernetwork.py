@@ -56,7 +56,7 @@ def get_training_option(filename):
     return obj
 
 
-def prepare_training_hypernetwork(hypernetwork_name, learn_rate=0.1,use_adamw_parameter=False, **adamW_kwarg_dict):
+def prepare_training_hypernetwork(hypernetwork_name, learn_rate=0.1, use_adamw_parameter=False, use_dadaptation=False, **adamW_kwarg_dict):
     """ returns hypernetwork object binded with optimizer"""
     hypernetwork = load_hypernetwork(hypernetwork_name)
     hypernetwork.to(devices.device)
@@ -68,19 +68,38 @@ def prepare_training_hypernetwork(hypernetwork_name, learn_rate=0.1,use_adamw_pa
     hypernetwork_name = hypernetwork_name.rsplit('(', 1)[0]
     filename = os.path.join(shared.cmd_opts.hypernetwork_dir, f'{hypernetwork_name}.pt')
     # Here we use optimizer from saved HN, or we can specify as UI option.
+    if hypernetwork.optimizer_name == 'DAdaptAdamW':
+        use_dadaptation = True
+    optimizer = None
+    optimizer_name = 'AdamW'
+    # Here we use optimizer from saved HN, or we can specify as UI option.
     if hypernetwork.optimizer_name in optimizer_dict:
         if use_adamw_parameter:
-            if hypernetwork.optimizer_name != 'AdamW':
+            if hypernetwork.optimizer_name != 'AdamW' and hypernetwork.optimizer_name != 'DAdaptAdamW':
                 raise RuntimeError(f"Cannot use adamW paramters for optimizer {hypernetwork.optimizer_name}!")
-            optimizer = torch.optim.AdamW(params=weights, lr=learn_rate, **adamW_kwarg_dict)
+            if use_dadaptation:
+                from .dadapt_test.install import get_dadapt_adam
+                optim_class = get_dadapt_adam()
+                if optim_class != torch.optim.AdamW:
+                    optimizer = optim_class(params=weights, lr=learn_rate, decouple=True, **adamW_kwarg_dict)
+                else:
+                    optimizer = torch.optim.AdamW(params=weights, lr=learn_rate, **adamW_kwarg_dict)
+            else:
+                optimizer = torch.optim.AdamW(params=weights, lr=learn_rate, **adamW_kwarg_dict)
         else:
             optimizer = optimizer_dict[hypernetwork.optimizer_name](params=weights, lr=learn_rate)
         optimizer_name = hypernetwork.optimizer_name
     else:
         print(f"Optimizer type {hypernetwork.optimizer_name} is not defined!")
+        if use_dadaptation:
+            from .dadapt_test.install import get_dadapt_adam
+            optim_class = get_dadapt_adam()
+            if optim_class == torch.optim.AdamW:
+                optimizer = optim_class(params=weights, lr=learn_rate, decouple=True, **adamW_kwarg_dict)
+                optimizer_name = 'DAdaptAdamW'
+    if optimizer is None:
         optimizer = torch.optim.AdamW(params=weights, lr=learn_rate, **adamW_kwarg_dict)
         optimizer_name = 'AdamW'
-
     if hypernetwork.optimizer_state_dict:  # This line must be changed if Optimizer type can be different from saved optimizer.
         try:
             optimizer.load_state_dict(hypernetwork.optimizer_state_dict)
@@ -103,7 +122,7 @@ def train_hypernetwork(id_task, hypernetwork_name, learn_rate, batch_size, gradi
                        use_grad_opts=False, gradient_clip_opt='None', optional_gradient_clip_value=1e01,
                        optional_gradient_norm_type=2, latent_sampling_std=-1,
                        noise_training_scheduler_enabled=False, noise_training_scheduler_repeat=False, noise_training_scheduler_cycle=128,
-                       load_training_options='', loss_opt='loss_simple'
+                       load_training_options='', loss_opt='loss_simple', use_dadaptation=False
                        ):
     # images allows training previews to have infotext. Importing it at the top causes a circular import problem.
     from modules import images
@@ -143,6 +162,7 @@ def train_hypernetwork(id_task, hypernetwork_name, learn_rate, batch_size, gradi
             noise_training_scheduler_repeat = dump.get('noise_training_scheduler_repeat', False)
             noise_training_scheduler_cycle = dump.get('noise_training_scheduler_cycle', 128)
             loss_opt = dump.get('loss_opt', 'loss_simple')
+            use_dadaptation = dump.get('use_dadaptation', False)
     try:
         if use_adamw_parameter:
             adamw_weight_decay, adamw_beta_1, adamw_beta_2, adamw_eps = [float(x) for x in
@@ -232,7 +252,7 @@ def train_hypernetwork(id_task, hypernetwork_name, learn_rate, batch_size, gradi
     shared.state.textinfo = "Initializing hypernetwork training..."
     shared.state.job_count = steps
     tmp_scheduler = LearnRateScheduler(learn_rate, steps, 0)
-    hypernetwork, optimizer, weights, optimizer_name = prepare_training_hypernetwork(hypernetwork_name, tmp_scheduler.learn_rate, use_adamw_parameter, **adamW_kwarg_dict)
+    hypernetwork, optimizer, weights, optimizer_name = prepare_training_hypernetwork(hypernetwork_name, tmp_scheduler.learn_rate, use_adamw_parameter, use_dadaptation, **adamW_kwarg_dict)
 
     hypernetwork_name = hypernetwork_name.rsplit('(', 1)[0]
     filename = os.path.join(shared.cmd_opts.hypernetwork_dir, f'{hypernetwork_name}.pt')
@@ -610,6 +630,7 @@ def internal_clean_training(hypernetwork_name, data_root, log_directory,
             noise_training_scheduler_repeat = dump.get('noise_training_scheduler_repeat', False)
             noise_training_scheduler_cycle = dump.get('noise_training_scheduler_cycle', 128)
             loss_opt = dump.get('loss_opt', 'loss_simple')
+            use_dadaptation = dump.get('use_dadaptation', False)
         else:
             raise RuntimeError(f"Cannot load from {load_training_options}!")
     else:
@@ -774,20 +795,39 @@ def internal_clean_training(hypernetwork_name, data_root, log_directory,
         shared.sd_model.first_stage_model.to(devices.cpu)
 
     weights = hypernetwork.weights(True)
-
+    if hypernetwork.optimizer_name == 'DAdaptAdamW':
+        use_dadaptation = True
+    optimizer = None
     # Here we use optimizer from saved HN, or we can specify as UI option.
     if hypernetwork.optimizer_name in optimizer_dict:
         if use_adamw_parameter:
-            if hypernetwork.optimizer_name != 'AdamW':
+            if hypernetwork.optimizer_name != 'AdamW' and hypernetwork.optimizer_name != 'DAdaptAdamW':
                 raise RuntimeError(f"Cannot use adamW paramters for optimizer {hypernetwork.optimizer_name}!")
-            optimizer = torch.optim.AdamW(params=weights, lr=scheduler.learn_rate, **adamW_kwarg_dict)
+            if use_dadaptation:
+                from .dadapt_test.install import get_dadapt_adam
+                optim_class = get_dadapt_adam()
+                if optim_class != torch.optim.AdamW:
+                    optimizer = optim_class(params=weights, lr=scheduler.learn_rate, decouple=True, **adamW_kwarg_dict)
+                else:
+                    optimizer = torch.optim.AdamW(params=weights, lr=scheduler.learn_rate, **adamW_kwarg_dict)
+            else:
+                optimizer = torch.optim.AdamW(params=weights, lr=scheduler.learn_rate, **adamW_kwarg_dict)
         else:
             optimizer = optimizer_dict[hypernetwork.optimizer_name](params=weights, lr=scheduler.learn_rate)
         optimizer_name = hypernetwork.optimizer_name
     else:
         print(f"Optimizer type {hypernetwork.optimizer_name} is not defined!")
+        if use_dadaptation:
+            from .dadapt_test.install import get_dadapt_adam
+            optim_class = get_dadapt_adam()
+            if optim_class == torch.optim.AdamW:
+                optimizer = optim_class(params=weights, lr=scheduler.learn_rate, decouple=True, **adamW_kwarg_dict)
+                optimizer_name = 'DAdaptAdamW'
+    if optimizer is None:
         optimizer = torch.optim.AdamW(params=weights, lr=scheduler.learn_rate, **adamW_kwarg_dict)
         optimizer_name = 'AdamW'
+
+
 
     if hypernetwork.optimizer_state_dict:  # This line must be changed if Optimizer type can be different from saved optimizer.
         try:
