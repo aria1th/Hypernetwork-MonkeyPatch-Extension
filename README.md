@@ -73,6 +73,10 @@ Training option loading and tuning for textual inversion
 
 D-Adaptation for textual inversion
 
+Adan and more optimizer options. 
+
+D-Adaptation repository update matching
+
 
 ### Some personal researches
 
