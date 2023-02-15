@@ -62,11 +62,16 @@ Now you can select CLIP model, its difference is significant but whether its bet
 The concept of ResNet, returning x + f(x) instead in layers, are available with option. Original webui does not support this, so you cannot load it without extension.
 Unlike expanding type (1 -> 2 -> 1), shrinking type(1 -> 0.1 -> 1) network will lost information at initial phase. In this case, we need to additionally train transformation that compresses and decompresses it. This is currently only in code, its not offered in UI at default.
 
-
-
+## D-Adaptation
+Currently D-Adaptation is available for hypernetwork training. You can use this with enabling advanced AdamW parameter option and checking the checkbox.
+Recommended LR is 1.0, only change it if its required. Other features are not tested with this feature.
+The code references to this:
+https://github.com/facebookresearch/dadaptation
 
 ### Planned features
-Allow using general models with .safetensor save /loading
+Training option loading and tuning for textual inversion
+
+D-Adaptation for textual inversion
 
 
 ### Some personal researches
