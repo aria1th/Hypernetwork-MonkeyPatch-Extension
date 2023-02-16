@@ -108,7 +108,10 @@ class HypernetworkModule(torch.nn.Module):
         assert layer_structure is not None, "layer_structure must not be None"
         assert layer_structure[0] == 1, "Multiplier Sequence should start with size 1!"
         assert layer_structure[-1] == 1, "Multiplier Sequence should end with size 1!"
-        assert skip_connection or dropout_structure is None or dropout_structure[0] == dropout_structure[-1] == 0, "Dropout Sequence should start and end with probability 0!"
+        # instead of throwing error, maybe try warning. first value is always not used.
+        if not (skip_connection or dropout_structure is None or dropout_structure[0] == dropout_structure[-1] == 0):
+            print("Dropout sequence does not starts or ends with zero.")
+        # assert skip_connection or dropout_structure is None or dropout_structure[0] == dropout_structure[-1] == 0, "Dropout Sequence should start and end with probability 0!"
         assert dropout_structure is None or len(dropout_structure) == len(layer_structure), "Dropout Sequence should match length with layer structure!"
 
         linears = []
@@ -340,7 +343,7 @@ class Hypernetwork:
 
         torch.save(state_dict, filename)
         if shared.opts.save_optimizer_state and self.optimizer_state_dict:
-            optimizer_saved_dict['hash'] = self.shorthash()
+            optimizer_saved_dict['hash'] = self.shorthash()  # this is necessary
             optimizer_saved_dict['optimizer_state_dict'] = self.optimizer_state_dict
             torch.save(optimizer_saved_dict, filename + '.optim')
 

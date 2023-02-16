@@ -81,7 +81,7 @@ def prepare_training_hypernetwork(hypernetwork_name, learn_rate=0.1, use_adamw_p
                 from .dadapt_test.install import get_dadapt_adam
                 optim_class = get_dadapt_adam()
                 if optim_class != torch.optim.AdamW:
-                    print('Optimizer class is '+ str(optim_class))
+                    print('Optimizer class is ' + str(optim_class))
                     optimizer = optim_class(params=weights, lr=learn_rate, decouple=True, **adamW_kwarg_dict)
                 else:
                     optimizer = torch.optim.AdamW(params=weights, lr=learn_rate, **adamW_kwarg_dict)
