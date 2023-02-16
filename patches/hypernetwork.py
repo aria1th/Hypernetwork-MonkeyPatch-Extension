@@ -381,7 +381,7 @@ class Hypernetwork:
             print(f"Activate last layer is set to {self.activate_output}")
             print(f"Dropout structure is set to {self.dropout_structure}")
         optimizer_saved_dict = torch.load(self.filename + '.optim', map_location = 'cpu') if os.path.exists(self.filename + '.optim') else {}
-        self.optimizer_name = "AdamW"
+        self.optimizer_name = state_dict.get('optimizer_name', 'AdamW')
 
         if optimizer_saved_dict.get('hash', None) == self.shorthash() or optimizer_saved_dict.get('hash', None) == sd_models.model_hash(filename):
             self.optimizer_state_dict = optimizer_saved_dict.get('optimizer_state_dict', None)

@@ -26,8 +26,8 @@ from .dataset import PersonalizedBase, PersonalizedDataLoader
 from ..ddpm_hijack import set_scheduler
 
 
-def get_lr_from_optimizer(optimizer):
-    return optimizer.param_groups[0].get('D', 1) * optimizer.param_groups[0].get('lr', 1)
+def get_lr_from_optimizer(optimizer: torch.optim.Optimizer):
+    return optimizer.param_groups[0].get('d', 1) * optimizer.param_groups[0].get('lr', 1)
 
 
 def set_accessible(obj):
@@ -80,13 +80,14 @@ def prepare_training_hypernetwork(hypernetwork_name, learn_rate=0.1, use_adamw_p
     if hypernetwork.optimizer_name in optimizer_dict:
         if use_adamw_parameter:
             if hypernetwork.optimizer_name != 'AdamW' and hypernetwork.optimizer_name != 'DAdaptAdamW':
-                raise RuntimeError(f"Cannot use adamW paramters for optimizer {hypernetwork.optimizer_name}!")
+                raise NotImplementedError(f"Cannot use adamW paramters for optimizer {hypernetwork.optimizer_name}!")
             if use_dadaptation:
                 from .dadapt_test.install import get_dadapt_adam
-                optim_class = get_dadapt_adam()
+                optim_class = get_dadapt_adam(hypernetwork.optimizer_name)
                 if optim_class != torch.optim.AdamW:
                     print('Optimizer class is ' + str(optim_class))
                     optimizer = optim_class(params=weights, lr=learn_rate, decouple=True, **adamW_kwarg_dict)
+                    hypernetwork.optimizer_name = 'DAdaptAdamW'
                 else:
                     optimizer = torch.optim.AdamW(params=weights, lr=learn_rate, **adamW_kwarg_dict)
             else:
@@ -98,10 +99,11 @@ def prepare_training_hypernetwork(hypernetwork_name, learn_rate=0.1, use_adamw_p
         print(f"Optimizer type {hypernetwork.optimizer_name} is not defined!")
         if use_dadaptation:
             from .dadapt_test.install import get_dadapt_adam
-            optim_class = get_dadapt_adam()
+            optim_class = get_dadapt_adam(hypernetwork.optimizer_name)
             if optim_class != torch.optim.AdamW:
                 optimizer = optim_class(params=weights, lr=learn_rate, decouple=True, **adamW_kwarg_dict)
                 optimizer_name = 'DAdaptAdamW'
+                hypernetwork.optimizer_name = 'DAdaptAdamW'
     if optimizer is None:
         optimizer = torch.optim.AdamW(params=weights, lr=learn_rate, **adamW_kwarg_dict)
         optimizer_name = 'AdamW'
@@ -109,6 +111,7 @@ def prepare_training_hypernetwork(hypernetwork_name, learn_rate=0.1, use_adamw_p
         try:
             optimizer.load_state_dict(hypernetwork.optimizer_state_dict)
             optim_to(optimizer, devices.device)
+            print('Loaded optimizer successfully!')
         except RuntimeError as e:
             print("Cannot resume from saved optimizer!")
             print(e)
@@ -811,7 +814,7 @@ def internal_clean_training(hypernetwork_name, data_root, log_directory,
                 raise RuntimeError(f"Cannot use adamW paramters for optimizer {hypernetwork.optimizer_name}!")
             if use_dadaptation:
                 from .dadapt_test.install import get_dadapt_adam
-                optim_class = get_dadapt_adam()
+                optim_class = get_dadapt_adam(hypernetwork.optimizer_name)
                 if optim_class != torch.optim.AdamW:
                     optimizer = optim_class(params=weights, lr=scheduler.learn_rate, decouple=True, **adamW_kwarg_dict)
                 else:
@@ -825,7 +828,7 @@ def internal_clean_training(hypernetwork_name, data_root, log_directory,
         print(f"Optimizer type {hypernetwork.optimizer_name} is not defined!")
         if use_dadaptation:
             from .dadapt_test.install import get_dadapt_adam
-            optim_class = get_dadapt_adam()
+            optim_class = get_dadapt_adam(hypernetwork.optimizer_name)
             if optim_class != torch.optim.AdamW:
                 optimizer = optim_class(params=weights, lr=scheduler.learn_rate, decouple=True, **adamW_kwarg_dict)
                 optimizer_name = 'DAdaptAdamW'
