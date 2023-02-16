@@ -26,6 +26,10 @@ from .dataset import PersonalizedBase, PersonalizedDataLoader
 from ..ddpm_hijack import set_scheduler
 
 
+def get_lr_from_optimizer(optimizer):
+    return optimizer.param_groups[0].get('D', 1) * optimizer.param_groups[0].get('lr', 1)
+
+
 def set_accessible(obj):
     setattr(shared, 'accessible_hypernetwork', obj)
     if hasattr(shared, 'loaded_hypernetworks'):
@@ -435,7 +439,7 @@ def train_hypernetwork(id_task, hypernetwork_name, learn_rate, batch_size, gradi
                 write_loss(log_directory, "hypernetwork_loss.csv", hypernetwork.step, steps_per_epoch,
                            {
                                "loss": f"{loss_step:.7f}",
-                               "learn_rate": optimizer.param_groups[0]['lr']
+                               "learn_rate": get_lr_from_optimizer(optimizer)
                            })
                 if shared.opts.training_enable_tensorboard:
                     epoch_num = hypernetwork.step // len(ds)
@@ -443,7 +447,7 @@ def train_hypernetwork(id_task, hypernetwork_name, learn_rate, batch_size, gradi
                     mean_loss = sum(sum(x) for x in loss_dict.values()) / sum(len(x) for x in loss_dict.values())
                     tensorboard_add(tensorboard_writer, loss=mean_loss, global_step=hypernetwork.step, step=epoch_step,
                                     learn_rate=scheduler.learn_rate if not use_beta_scheduler else
-                                    optimizer.param_groups[0]['lr'], epoch_num=epoch_num)
+                                    get_lr_from_optimizer(optimizer), epoch_num=epoch_num)
                 if images_dir is not None and (
                         use_beta_scheduler and scheduler_beta.is_EOC(hypernetwork.step) and create_when_converge) or (
                         create_image_every > 0 and steps_done % create_image_every == 0):
@@ -953,7 +957,7 @@ def internal_clean_training(hypernetwork_name, data_root, log_directory,
                 write_loss(log_directory, "hypernetwork_loss.csv", hypernetwork.step, steps_per_epoch,
                            {
                                "loss": f"{loss_step:.7f}",
-                               "learn_rate": optimizer.param_groups[0]['lr']
+                               "learn_rate": get_lr_from_optimizer(optimizer)
                            })
                 if shared.opts.training_enable_tensorboard:
                     epoch_num = hypernetwork.step // len(ds)
@@ -961,7 +965,7 @@ def internal_clean_training(hypernetwork_name, data_root, log_directory,
                     mean_loss = sum(sum(x) for x in loss_dict.values()) / sum(len(x) for x in loss_dict.values())
                     tensorboard_add(tensorboard_writer, loss=mean_loss, global_step=hypernetwork.step, step=epoch_step,
                                     learn_rate=scheduler.learn_rate if not use_beta_scheduler else
-                                    optimizer.param_groups[0]['lr'], epoch_num=epoch_num, base_name=hypernetwork_name)
+                                    get_lr_from_optimizer(optimizer), epoch_num=epoch_num, base_name=hypernetwork_name)
                 if images_dir is not None and (
                         use_beta_scheduler and scheduler_beta.is_EOC(hypernetwork.step) and create_when_converge) or (
                         create_image_every > 0 and steps_done % create_image_every == 0):
