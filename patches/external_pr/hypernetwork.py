@@ -60,7 +60,7 @@ def get_training_option(filename):
     return obj
 
 
-def prepare_training_hypernetwork(hypernetwork_name, learn_rate=0.1, use_adamw_parameter=False, use_dadaptation=False, **adamW_kwarg_dict):
+def prepare_training_hypernetwork(hypernetwork_name, learn_rate=0.1, use_adamw_parameter=False, use_dadaptation=False, dadapt_growth_factor=-1, **adamW_kwarg_dict):
     """ returns hypernetwork object binded with optimizer"""
     hypernetwork = load_hypernetwork(hypernetwork_name)
     hypernetwork.to(devices.device)
@@ -86,7 +86,7 @@ def prepare_training_hypernetwork(hypernetwork_name, learn_rate=0.1, use_adamw_p
                 optim_class = get_dadapt_adam(hypernetwork.optimizer_name)
                 if optim_class != torch.optim.AdamW:
                     print('Optimizer class is ' + str(optim_class))
-                    optimizer = optim_class(params=weights, lr=learn_rate, decouple=True, **adamW_kwarg_dict)
+                    optimizer = optim_class(params=weights, lr=learn_rate, decouple=True, growth_rate = float('inf') if dadapt_growth_factor < 0 else dadapt_growth_factor, **adamW_kwarg_dict)
                     hypernetwork.optimizer_name = 'DAdaptAdamW'
                 else:
                     optimizer = torch.optim.AdamW(params=weights, lr=learn_rate, **adamW_kwarg_dict)
@@ -101,7 +101,7 @@ def prepare_training_hypernetwork(hypernetwork_name, learn_rate=0.1, use_adamw_p
             from .dadapt_test.install import get_dadapt_adam
             optim_class = get_dadapt_adam(hypernetwork.optimizer_name)
             if optim_class != torch.optim.AdamW:
-                optimizer = optim_class(params=weights, lr=learn_rate, decouple=True, **adamW_kwarg_dict)
+                optimizer = optim_class(params=weights, lr=learn_rate, decouple=True, growth_rate = float('inf') if dadapt_growth_factor < 0 else dadapt_growth_factor, **adamW_kwarg_dict)
                 optimizer_name = 'DAdaptAdamW'
                 hypernetwork.optimizer_name = 'DAdaptAdamW'
     if optimizer is None:
@@ -131,7 +131,7 @@ def train_hypernetwork(id_task, hypernetwork_name, learn_rate, batch_size, gradi
                        use_grad_opts=False, gradient_clip_opt='None', optional_gradient_clip_value=1e01,
                        optional_gradient_norm_type=2, latent_sampling_std=-1,
                        noise_training_scheduler_enabled=False, noise_training_scheduler_repeat=False, noise_training_scheduler_cycle=128,
-                       load_training_options='', loss_opt='loss_simple', use_dadaptation=False
+                       load_training_options='', loss_opt='loss_simple', use_dadaptation=False, dadapt_growth_factor=-1
                        ):
     # images allows training previews to have infotext. Importing it at the top causes a circular import problem.
     from modules import images
@@ -172,6 +172,7 @@ def train_hypernetwork(id_task, hypernetwork_name, learn_rate, batch_size, gradi
             noise_training_scheduler_cycle = dump.get('noise_training_scheduler_cycle', 128)
             loss_opt = dump.get('loss_opt', 'loss_simple')
             use_dadaptation = dump.get('use_dadaptation', False)
+            dadapt_growth_factor = dump.get('dadapt_growth_factor', -1)
     try:
         if use_adamw_parameter:
             adamw_weight_decay, adamw_beta_1, adamw_beta_2, adamw_eps = [float(x) for x in
@@ -261,7 +262,7 @@ def train_hypernetwork(id_task, hypernetwork_name, learn_rate, batch_size, gradi
     shared.state.textinfo = "Initializing hypernetwork training..."
     shared.state.job_count = steps
     tmp_scheduler = LearnRateScheduler(learn_rate, steps, 0)
-    hypernetwork, optimizer, weights, optimizer_name = prepare_training_hypernetwork(hypernetwork_name, tmp_scheduler.learn_rate, use_adamw_parameter, use_dadaptation, **adamW_kwarg_dict)
+    hypernetwork, optimizer, weights, optimizer_name = prepare_training_hypernetwork(hypernetwork_name, tmp_scheduler.learn_rate, use_adamw_parameter, use_dadaptation,dadapt_growth_factor, **adamW_kwarg_dict)
 
     hypernetwork_name = hypernetwork_name.rsplit('(', 1)[0]
     filename = os.path.join(shared.cmd_opts.hypernetwork_dir, f'{hypernetwork_name}.pt')
@@ -640,6 +641,7 @@ def internal_clean_training(hypernetwork_name, data_root, log_directory,
             noise_training_scheduler_cycle = dump.get('noise_training_scheduler_cycle', 128)
             loss_opt = dump.get('loss_opt', 'loss_simple')
             use_dadaptation = dump.get('use_dadaptation', False)
+            dadapt_growth_factor = dump.get('dadapt_growth_factor', -1)
         else:
             raise RuntimeError(f"Cannot load from {load_training_options}!")
     else:
@@ -816,7 +818,7 @@ def internal_clean_training(hypernetwork_name, data_root, log_directory,
                 from .dadapt_test.install import get_dadapt_adam
                 optim_class = get_dadapt_adam(hypernetwork.optimizer_name)
                 if optim_class != torch.optim.AdamW:
-                    optimizer = optim_class(params=weights, lr=scheduler.learn_rate, decouple=True, **adamW_kwarg_dict)
+                    optimizer = optim_class(params=weights, lr=scheduler.learn_rate, growth_rate = float('inf') if dadapt_growth_factor < 0 else dadapt_growth_factor, decouple=True, **adamW_kwarg_dict)
                 else:
                     optimizer = torch.optim.AdamW(params=weights, lr=scheduler.learn_rate, **adamW_kwarg_dict)
             else:
@@ -830,7 +832,7 @@ def internal_clean_training(hypernetwork_name, data_root, log_directory,
             from .dadapt_test.install import get_dadapt_adam
             optim_class = get_dadapt_adam(hypernetwork.optimizer_name)
             if optim_class != torch.optim.AdamW:
-                optimizer = optim_class(params=weights, lr=scheduler.learn_rate, decouple=True, **adamW_kwarg_dict)
+                optimizer = optim_class(params=weights, lr=scheduler.learn_rate, growth_rate = float('inf') if dadapt_growth_factor < 0 else dadapt_growth_factor, decouple=True, **adamW_kwarg_dict)
                 optimizer_name = 'DAdaptAdamW'
     if optimizer is None:
         optimizer = torch.optim.AdamW(params=weights, lr=scheduler.learn_rate, **adamW_kwarg_dict)
