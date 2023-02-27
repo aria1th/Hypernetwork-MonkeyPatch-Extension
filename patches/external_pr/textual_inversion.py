@@ -414,7 +414,11 @@ def train_embedding(id_task, embedding_name, learn_rate, batch_size, gradient_st
                         p.height = training_height
 
                     preview_text = p.prompt
-
+                    if hasattr(p, 'disable_extra_networks'):
+                        p.disable_extra_networks = True
+                        is_patched = True
+                    else:
+                        is_patched = False
                     processed = processing.process_images(p)
                     image = processed.images[0] if len(processed.images) > 0 else None
 
