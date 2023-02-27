@@ -97,7 +97,7 @@ def train_embedding(id_task, embedding_name, learn_rate, batch_size, gradient_st
                     use_adamw_parameter=False, adamw_weight_decay=0.01, adamw_beta_1=0.9, adamw_beta_2=0.99,
                     adamw_eps=1e-8,
                     use_grad_opts=False, gradient_clip_opt='None', optional_gradient_clip_value=1e01,
-                    optional_gradient_norm_type=2, latent_sampling_std=-1
+                    optional_gradient_norm_type=2, latent_sampling_std=-1, use_weight=False
                     ):
     save_embedding_every = save_embedding_every or 0
     create_image_every = create_image_every or 0
@@ -234,7 +234,7 @@ def train_embedding(id_task, embedding_name, learn_rate, batch_size, gradient_st
                           batch_size=batch_size, gradient_step=gradient_step,
                           shuffle_tags=shuffle_tags, tag_drop_out=tag_drop_out,
                           latent_sampling_method=latent_sampling_method,
-                          latent_sampling_std=latent_sampling_std)
+                          latent_sampling_std=latent_sampling_std, use_weight=use_weight)
 
     latent_sampling_method = ds.latent_sampling_method
 
@@ -319,6 +319,8 @@ def train_embedding(id_task, embedding_name, learn_rate, batch_size, gradient_st
 
                 with devices.autocast():
                     x = batch.latent_sample.to(devices.device, non_blocking=pin_memory)
+                    if use_weight:
+                        w = batch.weight.to(devices.device, non_blocking=pin_memory)
                     shared.sd_model.cond_stage_model.to(devices.device)
                     c = shared.sd_model.cond_stage_model(batch.cond_text)
                     if is_training_inpainting_model:
@@ -329,7 +331,11 @@ def train_embedding(id_task, embedding_name, learn_rate, batch_size, gradient_st
                         cond = {"c_concat": [img_c], "c_crossattn": [c]}
                     else:
                         cond = c
-                    loss = shared.sd_model(x, cond)[0] / gradient_step
+                    if use_weight:
+                        loss = shared.sd_model.weighted_forward(x, c, w)[0] / gradient_step
+                        del w
+                    else:
+                        loss = shared.sd_model.forward(x, cond)[0] / gradient_step
                     del x
                     _loss_step += loss.item()
                 scaler.scale(loss).backward()

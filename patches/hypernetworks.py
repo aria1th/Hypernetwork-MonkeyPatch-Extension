@@ -8,6 +8,8 @@ from .hnutil import find_self
 from .shared import version_flag
 
 lazy_load = False  # when this is enabled, HNs will be loaded when required.
+if not hasattr(devices, 'cond_cast_unet'):
+    raise RuntimeError("Cannot find cond_cast_unet attribute, please update your webui version!")
 
 
 class DynamicDict(dict):  # Brief dict that dynamically unloads Hypernetworks if required.
@@ -252,8 +254,9 @@ class SingularForward(Forward):
                 return context_k, context_v
             #if layer is not None and hasattr(layer, 'hyper_k') and hasattr(layer, 'hyper_v'):
             #    layer.hyper_k = context_layers[0], layer.hyper_v = context_layers[1]
-            return context_layers[0](context_k, multiplier=self.strength), context_layers[1](context_v,
-                                                                                             multiplier=self.strength)  # define forward_strength, which invokes HNModule with specified strength.
+            return devices.cond_cast_unet(context_layers[0](devices.cond_cast_float(context_k), multiplier=self.strength)),\
+                   devices.cond_cast_unet(context_layers[1](devices.cond_cast_float(context_v), multiplier=self.strength))
+            # define forward_strength, which invokes HNModule with specified strength.
         # Note : we share same HN if it is called multiple time, which means you might not be able to train it via this structure.
         raise KeyError(f"Key {self.processor} is not found in cached Hypernetworks!")
 

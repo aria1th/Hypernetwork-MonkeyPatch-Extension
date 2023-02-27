@@ -131,7 +131,7 @@ def train_hypernetwork(id_task, hypernetwork_name, learn_rate, batch_size, gradi
                        use_grad_opts=False, gradient_clip_opt='None', optional_gradient_clip_value=1e01,
                        optional_gradient_norm_type=2, latent_sampling_std=-1,
                        noise_training_scheduler_enabled=False, noise_training_scheduler_repeat=False, noise_training_scheduler_cycle=128,
-                       load_training_options='', loss_opt='loss_simple', use_dadaptation=False, dadapt_growth_factor=-1
+                       load_training_options='', loss_opt='loss_simple', use_dadaptation=False, dadapt_growth_factor=-1, use_weight=False
                        ):
     # images allows training previews to have infotext. Importing it at the top causes a circular import problem.
     from modules import images
@@ -173,6 +173,7 @@ def train_hypernetwork(id_task, hypernetwork_name, learn_rate, batch_size, gradi
             loss_opt = dump.get('loss_opt', 'loss_simple')
             use_dadaptation = dump.get('use_dadaptation', False)
             dadapt_growth_factor = dump.get('dadapt_growth_factor', -1)
+            use_weight = dump.get('use_weight', False)
     try:
         if use_adamw_parameter:
             adamw_weight_decay, adamw_beta_1, adamw_beta_2, adamw_eps = [float(x) for x in
@@ -315,7 +316,8 @@ def train_hypernetwork(id_task, hypernetwork_name, learn_rate, batch_size, gradi
                           gradient_step=gradient_step, shuffle_tags=shuffle_tags,
                           tag_drop_out=tag_drop_out,
                           latent_sampling_method=latent_sampling_method,
-                          latent_sampling_std=latent_sampling_std)
+                          latent_sampling_std=latent_sampling_std,
+                          use_weight=use_weight)
 
     latent_sampling_method = ds.latent_sampling_method
 
@@ -382,6 +384,8 @@ def train_hypernetwork(id_task, hypernetwork_name, learn_rate, batch_size, gradi
 
                 with torch.autocast("cuda"):
                     x = batch.latent_sample.to(devices.device, non_blocking=pin_memory)
+                    if use_weight:
+                        w = batch.weight.to(devices.device, non_blocking=pin_memory)
                     if tag_drop_out != 0 or shuffle_tags:
                         shared.sd_model.cond_stage_model.to(devices.device)
                         c = shared.sd_model.cond_stage_model(batch.cond_text).to(devices.device,
@@ -389,8 +393,11 @@ def train_hypernetwork(id_task, hypernetwork_name, learn_rate, batch_size, gradi
                         shared.sd_model.cond_stage_model.to(devices.cpu)
                     else:
                         c = stack_conds(batch.cond).to(devices.device, non_blocking=pin_memory)
-                    _, losses = shared.sd_model(x, c)
-                    loss = losses['val/' + loss_opt]
+                    if use_weight:
+                        loss = shared.sd_model.weighted_forward(x, c, w)[0]
+                    else:
+                        _, losses = shared.sd_model.forward(x, c)
+                        loss = losses['val/' + loss_opt]
                     for filenames in batch.filename:
                         loss_dict[filenames].append(loss.detach().item())
                     loss /= gradient_step
@@ -642,6 +649,7 @@ def internal_clean_training(hypernetwork_name, data_root, log_directory,
             loss_opt = dump.get('loss_opt', 'loss_simple')
             use_dadaptation = dump.get('use_dadaptation', False)
             dadapt_growth_factor = dump.get('dadapt_growth_factor', -1)
+            use_weight = dump.get('use_weight', False)
         else:
             raise RuntimeError(f"Cannot load from {load_training_options}!")
     else:
@@ -792,7 +800,8 @@ def internal_clean_training(hypernetwork_name, data_root, log_directory,
                           tag_drop_out=tag_drop_out,
                           latent_sampling_method=latent_sampling_method,
                           latent_sampling_std=latent_sampling_std,
-                          manual_seed=manual_seed)
+                          manual_seed=manual_seed,
+                          use_weight=use_weight)
 
     latent_sampling_method = ds.latent_sampling_method
 
@@ -901,6 +910,8 @@ def internal_clean_training(hypernetwork_name, data_root, log_directory,
 
                 with torch.autocast("cuda"):
                     x = batch.latent_sample.to(devices.device, non_blocking=pin_memory)
+                    if use_weight:
+                        w = batch.weight.to(devices.device, non_blocking=pin_memory)
                     if tag_drop_out != 0 or shuffle_tags:
                         shared.sd_model.cond_stage_model.to(devices.device)
                         c = shared.sd_model.cond_stage_model(batch.cond_text).to(devices.device,
@@ -908,8 +919,11 @@ def internal_clean_training(hypernetwork_name, data_root, log_directory,
                         shared.sd_model.cond_stage_model.to(devices.cpu)
                     else:
                         c = stack_conds(batch.cond).to(devices.device, non_blocking=pin_memory)
-                    _, losses = shared.sd_model(x, c)
-                    loss = losses['val/' + loss_opt]
+                    if use_weight:
+                        loss = shared.sd_model.weighted_forward(x, c, w)[0]
+                    else:
+                        _, losses = shared.sd_model.forward(x, c)
+                        loss = losses['val/' + loss_opt]
                     for filenames in batch.filename:
                         loss_dict[filenames].append(loss.detach().item())
                     loss /= gradient_step
@@ -1132,9 +1146,11 @@ def train_hypernetwork_tuning(id_task, hypernetwork_name, data_root, log_directo
                 print(f"Cannot load from {load_training_option}!")
                 continue
             internal_clean_training(
-                hypernetwork_name if load_hypernetworks_option == '' else optional_new_hypernetwork_name, data_root,
+                hypernetwork_name if load_hypernetworks_option == '' else optional_new_hypernetwork_name,
+                data_root,
                 log_directory,
-                create_image_every, save_hypernetwork_every,
+                create_image_every,
+                save_hypernetwork_every,
                 preview_from_txt2img, preview_prompt, preview_negative_prompt, preview_steps, preview_sampler_index,
                 preview_cfg_scale, preview_seed, preview_width, preview_height,
                 move_optimizer,

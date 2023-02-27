@@ -83,7 +83,7 @@ def save_training_setting(*args):
     gamma_rate, use_beta_adamW_checkbox, save_when_converge, create_when_converge, \
     adamw_weight_decay, adamw_beta_1, adamw_beta_2, adamw_eps, show_gradient_clip_checkbox, \
     gradient_clip_opt, optional_gradient_clip_value, optional_gradient_norm_type, latent_sampling_std,\
-    noise_training_scheduler_enabled, noise_training_scheduler_repeat, noise_training_scheduler_cycle, loss_opt, use_dadaptation, dadapt_growth_factor = args
+    noise_training_scheduler_enabled, noise_training_scheduler_repeat, noise_training_scheduler_cycle, loss_opt, use_dadaptation, dadapt_growth_factor, use_weight = args
     dumped_locals = locals()
     dumped_locals.pop('args')
     filename = (str(random.randint(0, 1024)) if save_file_name == '' else save_file_name) + '_train_' + '.json'
@@ -171,6 +171,7 @@ def on_train_gamma_tab(params=None):
             noise_training_scheduler_enabled = gr.Checkbox(label="Use Noise training scheduler(test)")
             noise_training_scheduler_repeat = gr.Checkbox(label="Restarts noise scheduler, or linear")
             noise_training_scheduler_cycle = gr.Number(label="Restarts noise scheduler every nth epoch")
+        use_weight = gr.Checkbox(label="Uses image alpha(transparency) channel for adjusting loss")
         # change by feedback
         use_dadaptation.change(
             fn=lambda show: gr_show(show),
@@ -283,7 +284,9 @@ def on_train_gamma_tab(params=None):
         noise_training_scheduler_cycle,
         loss_opt,
         use_dadaptation,
-        dadapt_growth_factor],
+        dadapt_growth_factor,
+        use_weight
+        ],
         outputs=[
             ti_output,
             ti_outcome,
@@ -330,7 +333,8 @@ def on_train_gamma_tab(params=None):
             gradient_clip_opt,
             optional_gradient_clip_value,
             optional_gradient_norm_type,
-            latent_sampling_std_value
+            latent_sampling_std_value,
+            use_weight
         ],
         outputs=[
             ti_output,
@@ -385,7 +389,8 @@ def on_train_gamma_tab(params=None):
             load_training_option,
             loss_opt,
             use_dadaptation,
-            dadapt_growth_factor
+            dadapt_growth_factor,
+            use_weight
         ],
         outputs=[
             ti_output,
