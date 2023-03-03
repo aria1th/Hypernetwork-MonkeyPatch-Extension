@@ -116,11 +116,11 @@ class PersonalizedBase(Dataset):
             npimage = (npimage / 127.5 - 1.0).astype(np.float32)
 
             torchdata = torch.from_numpy(npimage).permute(2, 0, 1).to(device=device, dtype=torch.float32)
-            latent_sample = model.get_first_stage_encoding(latent_dist).squeeze().to(devices.cpu)
-            weight = torch.ones_like(latent_sample)
+
             with torch.autocast("cuda"):
                 latent_dist = model.encode_first_stage(torchdata.unsqueeze(dim=0))
-
+                latent_sample = model.get_first_stage_encoding(latent_dist).squeeze().to(devices.cpu)
+                weight = torch.ones_like(latent_sample)
             if latent_sampling_method == "once" or (
                     latent_sampling_method == "deterministic" and not isinstance(latent_dist,
                                                                                  DiagonalGaussianDistribution)):
@@ -208,6 +208,7 @@ class GroupedBatchSampler(Sampler):
         self.n_rand_batches = n_batch - sum(self.base)
         self.probs = [e % batch_size/self.n_rand_batches/batch_size if self.n_rand_batches > 0 else 0 for e in expected]
         self.batch_size = batch_size
+
 
     def __len__(self):
         return self.len

@@ -550,7 +550,8 @@ Last saved image: {html.escape(last_saved_image)}<br/>
     finally:
         pbar.leave = False
         pbar.close()
-        hypernetwork.eval()
+        if hypernetwork is not None:
+            hypernetwork.eval()
         shared.parallel_processing_allowed = old_parallel_processing_allowed
         if hasattr(sd_hijack_checkpoint, 'remove'):
             sd_hijack_checkpoint.remove()
@@ -815,6 +816,7 @@ def internal_clean_training(hypernetwork_name, data_root, log_directory,
         shared.sd_model.first_stage_model.to(devices.cpu)
 
     weights = hypernetwork.weights(True)
+    optimizer_name = hypernetwork.optimizer_name
     if hypernetwork.optimizer_name == 'DAdaptAdamW':
         use_dadaptation = True
     optimizer = None
@@ -1070,6 +1072,9 @@ Last saved image: {html.escape(last_saved_image)}<br/>
 </p>
 """
     except Exception:
+        if pbar is not None:
+            pbar.set_description(traceback.format_exc())
+        shared.state.textinfo = traceback.format_exc()
         print(traceback.format_exc(), file=sys.stderr)
     finally:
         pbar.leave = False
