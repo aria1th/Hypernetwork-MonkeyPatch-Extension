@@ -39,7 +39,9 @@ Hypernetwork saved to {html.escape(filename)}
             shared.loaded_hypernetwork = initial_hypernetwork
         else:
             shared.loaded_hypernetworks = []
-        del hypernetwork
+        # check hypernetwork is bounded then delete it
+        if locals().get('hypernetwork', None) is not None:
+            del hypernetwork
         gc.collect()
         shared.sd_model.cond_stage_model.to(devices.device)
         shared.sd_model.first_stage_model.to(devices.device)

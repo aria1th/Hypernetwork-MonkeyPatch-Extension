@@ -196,7 +196,7 @@ def train_hypernetwork(id_task, hypernetwork_name, learn_rate, batch_size, gradi
             }
         if use_beta_scheduler:
             print("Using Beta Scheduler")
-            beta_repeat_epoch = int(beta_repeat_epoch)
+            beta_repeat_epoch = int(float(beta_repeat_epoch))
             assert beta_repeat_epoch > 0, f"Cannot use too small cycle {beta_repeat_epoch}!"
             min_lr = float(min_lr)
             assert min_lr < 1, f"Cannot use minimum lr with {min_lr}!"
@@ -205,7 +205,7 @@ def train_hypernetwork(id_task, hypernetwork_name, learn_rate, batch_size, gradi
             assert 0 <= gamma_rate <= 1, f"Cannot use gamma rate with {gamma_rate}!"
             epoch_mult = float(epoch_mult)
             assert 1 <= epoch_mult, "Cannot use epoch multiplier smaller than 1!"
-            warmup = int(warmup)
+            warmup = int(float(warmup))
             assert warmup >= 1, "Warmup epoch should be larger than 0!"
             print(f"Save when converges : {save_when_converge}")
             print(f"Generate image when converges : {create_when_converge}")
@@ -217,8 +217,8 @@ def train_hypernetwork(id_task, hypernetwork_name, learn_rate, batch_size, gradi
             gamma_rate = 1
             save_when_converge = False
             create_when_converge = False
-    except ValueError:
-        raise RuntimeError("Cannot use advanced LR scheduler settings!")
+    except ValueError as e:
+        raise RuntimeError("Cannot use advanced LR scheduler settings! "+ str(e))
     if noise_training_scheduler_enabled:
         set_scheduler(noise_training_scheduler_cycle, noise_training_scheduler_repeat, True)
         print(f"Noise training scheduler is now ready for {noise_training_scheduler_cycle}, {noise_training_scheduler_repeat}!")
@@ -231,7 +231,7 @@ def train_hypernetwork(id_task, hypernetwork_name, learn_rate, batch_size, gradi
             raise RuntimeError(f"Cannot convert invalid gradient clipping value {optional_gradient_clip_value})")
         if gradient_clip_opt == "Norm":
             try:
-                grad_norm = int(optional_gradient_norm_type)
+                grad_norm = int(float(optional_gradient_norm_type))
             except ValueError:
                 raise RuntimeError(f"Cannot convert invalid gradient norm type {optional_gradient_norm_type})")
             assert grad_norm >= 0, f"P-norm cannot be calculated from negative number {grad_norm}"
@@ -401,6 +401,7 @@ def train_hypernetwork(id_task, hypernetwork_name, learn_rate, batch_size, gradi
                     for filenames in batch.filename:
                         loss_dict[filenames].append(loss.detach().item())
                     loss /= gradient_step
+                    assert not torch.isnan(loss), "Loss is NaN"
                     del x
                     del c
 
@@ -677,7 +678,7 @@ def internal_clean_training(hypernetwork_name, data_root, log_directory,
             }
         if use_beta_scheduler:
             print("Using Beta Scheduler")
-            beta_repeat_epoch = int(beta_repeat_epoch)
+            beta_repeat_epoch = int(float(beta_repeat_epoch))
             assert beta_repeat_epoch > 0, f"Cannot use too small cycle {beta_repeat_epoch}!"
             min_lr = float(min_lr)
             assert min_lr < 1, f"Cannot use minimum lr with {min_lr}!"
@@ -686,7 +687,7 @@ def internal_clean_training(hypernetwork_name, data_root, log_directory,
             assert 0 <= gamma_rate <= 1, f"Cannot use gamma rate with {gamma_rate}!"
             epoch_mult = float(epoch_mult)
             assert 1 <= epoch_mult, "Cannot use epoch multiplier smaller than 1!"
-            warmup = int(warmup)
+            warmup = int(float(warmup))
             assert warmup >= 1, "Warmup epoch should be larger than 0!"
             print(f"Save when converges : {save_when_converge}")
             print(f"Generate image when converges : {create_when_converge}")
@@ -707,7 +708,7 @@ def internal_clean_training(hypernetwork_name, data_root, log_directory,
             raise RuntimeError(f"Cannot convert invalid gradient clipping value {optional_gradient_clip_value})")
         if gradient_clip_opt == "Norm":
             try:
-                grad_norm = int(optional_gradient_norm_type)
+                grad_norm = int(float(optional_gradient_norm_type))
             except ValueError:
                 raise RuntimeError(f"Cannot convert invalid gradient norm type {optional_gradient_norm_type})")
             assert grad_norm >= 0, f"P-norm cannot be calculated from negative number {grad_norm}"
