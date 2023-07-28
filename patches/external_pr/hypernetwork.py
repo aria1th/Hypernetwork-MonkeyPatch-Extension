@@ -12,7 +12,7 @@ import torch
 import tqdm
 
 from modules import shared, sd_models, devices, processing, sd_samplers
-from modules.hypernetworks.hypernetwork import optimizer_dict, stack_conds, save_hypernetwork, report_statistics
+from modules.hypernetworks.hypernetwork import optimizer_dict, stack_conds, save_hypernetwork
 from modules.textual_inversion import textual_inversion
 from modules.textual_inversion.learn_schedule import LearnRateScheduler
 from ..tbutils import tensorboard_setup, tensorboard_add, tensorboard_add_image, tensorboard_log_hyperparameter
@@ -560,7 +560,6 @@ Last saved image: {html.escape(last_saved_image)}<br/>
         remove_accessible()
         gc.collect()
         torch.cuda.empty_cache()
-    report_statistics(loss_dict)
     filename = os.path.join(shared.cmd_opts.hypernetwork_dir, f'{hypernetwork_name}.pt')
     hypernetwork.optimizer_name = optimizer_name
     if shared.opts.save_optimizer_state:
@@ -1115,7 +1114,6 @@ Last saved image: {html.escape(last_saved_image)}<br/>
                                            loss=mean_loss,
                                            base_hypernetwork_name=hypernetwork_name
                                            )
-    report_statistics(loss_dict)
     filename = os.path.join(shared.cmd_opts.hypernetwork_dir, f'{hypernetwork_name}.pt')
     hypernetwork.optimizer_name = optimizer_name
     if shared.opts.save_optimizer_state:
