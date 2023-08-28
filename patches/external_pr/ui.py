@@ -5,10 +5,9 @@ import os
 import random
 
 from modules import shared, sd_hijack, devices
-from modules.call_queue import wrap_gradio_call
+from modules.call_queue import wrap_gradio_call, wrap_gradio_gpu_call
 from modules.paths import script_path
 from modules.ui import create_refresh_button, gr_show
-from webui import wrap_gradio_gpu_call
 from .textual_inversion import train_embedding as train_embedding_external
 from .hypernetwork import train_hypernetwork as train_hypernetwork_external, train_hypernetwork_tuning
 import gradio as gr
